@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Tuple, Set
 import yaml
 
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Vertical, Center, Middle
 from textual.widgets import (
     Button,
     Footer,
@@ -12,12 +12,13 @@ from textual.widgets import (
     Input,
     Label,
     Log,
-    Select,
     Static,
     SelectionList,
+    OptionList,
 )
 from textual.widgets.selection_list import Selection
 from textual.binding import Binding
+from textual.screen import Screen
 import pyperclip
 
 # --- Configuration & Data Loading ---
@@ -30,23 +31,21 @@ def load_yaml_data():
     isotypes = {}
     common_muts = []
     
-    # Load Isotypes/Sequences
     try:
         if os.path.exists(seq_path):
             with open(seq_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
                 isotypes = data.get("isotypes", {})
     except Exception as e:
-        print(f"Error loading sequences.yaml: {e}")
+        pass
 
-    # Load Mutations
     try:
         if os.path.exists(mut_path):
             with open(mut_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
                 common_muts = data.get("common_mutations", [])
     except Exception as e:
-        print(f"Error loading mutants.yaml: {e}")
+        pass
         
     return isotypes, common_muts
 
@@ -86,110 +85,280 @@ def apply_mutations(sequence: str, mutants_str: str, isotype: str) -> Tuple[str,
         except Exception as e: errors.append(f"Format error ({m}): {str(e)}")
     return "".join(seq_list), errors
 
-# --- Textual TUI ---
+# --- Catppuccin Latte Colors & Retro Styling ---
 
-USAGE_GUIDE = """
-[bold cyan]Welcome to Fc Engineering Studio Pro![/]
+CATPPUCCIN_LATTE = """
+$rosewater: #dc8a78;
+$flamingo: #dd7878;
+$pink: #ea76cb;
+$mauve: #8839ef;
+$red: #d20f39;
+$maroon: #e64553;
+$peach: #fe640b;
+$yellow: #df8e1d;
+$green: #40a02b;
+$teal: #179287;
+$sky: #04a5e5;
+$sapphire: #209fb5;
+$blue: #1e66f5;
+$lavender: #7287fd;
+$text: #4c4f69;
+$subtext1: #5c5f77;
+$subtext0: #6c6f85;
+$overlay2: #7c7f93;
+$overlay1: #8c8fa1;
+$overlay0: #9ca0b0;
+$surface2: #acb0be;
+$surface1: #bcc0cc;
+$surface0: #ccd0da;
+$base: #eff1f5;
+$mantle: #e6e9ef;
+$crust: #dce0e8;
 
-이 도구는 [b]EU Numbering[/b] 체계를 기준으로 인간 IgG Fc 변이 서열을 생성합니다.
-
-[b]How to use:[/b]
-1. [cyan]Isotype & Allotype[/]을 선택하여 베이스 서열을 결정합니다.
-2. [cyan]Common Mutations[/] 목록에서 널리 알려진 변이를 체크합니다.
-3. [cyan]Custom Mutants[/] 입력창에 추가하고 싶은 변이를 입력합니다.
-4. [cyan]Generate[/] 버튼을 누르거나 [b]Enter[/b] 키를 입력하여 결과를 확인합니다.
-5. [b]Ctrl + Y[/b]를 눌러 FASTA 서열을 클립보드에 복사합니다.
-
-[dim]* 서열 데이터는 [b]sequences.yaml[/b], 프리셋 변이는 [b]mutants.yaml[/b]에서 관리됩니다.[/]
+$primary: $blue;
+$secondary: $mauve;
+$accent: $peach;
+$success: $green;
+$error: $red;
+$warning: $yellow;
 """
 
-class MutantApp(App):
-    TITLE = "Fc Engineering Studio Pro"
-    CSS = """
-    Container { padding: 1; }
-    .sidebar { width: 40%; border-right: solid $primary; padding-right: 1; }
-    .main-content { width: 60%; padding-left: 2; }
-    Label { margin-top: 1; color: $accent; font-weight: bold; }
-    #guide-box { 
-        background: $surface; 
-        border: solid $primary-darken-2; 
-        padding: 1; 
-        margin-bottom: 1;
-        color: $text;
-    }
-    #result-box { 
-        height: 1fr; 
-        border: panel $primary; 
-        padding: 1; 
-        background: $surface; 
-        color: $text; 
-    }
-    SelectionList { height: 10; border: sunken $panel; margin-top: 1; }
-    .help { margin-top: 1; color: $text-disabled; font-size: 80%; }
-    """
+ANTIBODY_ASCII = r"""
+     \ /     \ /
+      V       V
+      |       |
+      |---H---|
+      |       |
+      |   C   |
+      |       |
+      \_______/
+"""
 
+RETRO_STYLE = """
+Screen {
+    background: $base;
+    color: $text;
+}
+
+Header {
+    background: $mantle;
+    color: $blue;
+    text-style: bold;
+    border-bottom: heavy $blue;
+}
+
+Footer {
+    background: $mantle;
+    color: $subtext0;
+}
+
+.title {
+    color: $mauve;
+    text-style: bold italic underline;
+    margin-bottom: 1;
+}
+
+.subtitle {
+    color: $subtext1;
+    margin-bottom: 1;
+}
+
+.ascii-art {
+    color: $peach;
+    margin: 1 0;
+}
+
+.retro-box {
+    border: double $blue;
+    background: $surface0;
+    padding: 1 2;
+    margin: 1;
+    width: 80;
+    align: center middle;
+    /* transition: opacity 500ms in_out_cubic; */
+}
+
+Button {
+    background: $surface1;
+    color: $text;
+    border: tall $blue;
+    margin-top: 1;
+}
+
+Button:hover {
+    background: $blue;
+    color: $base;
+}
+
+OptionList {
+    background: $surface0;
+    color: $text;
+    border: double $blue;
+    height: 6;
+}
+
+OptionList > .option-list--highlighted {
+    background: $blue;
+    color: $base;
+}
+
+Log {
+    background: $crust;
+    color: $green;
+    border: double $green;
+    height: 10;
+}
+
+Input {
+    background: $surface0;
+    color: $text;
+    border: double $lavender;
+}
+
+SelectionList {
+    background: $surface0;
+    color: $text;
+    border: double $blue;
+    height: 8;
+}
+
+#press-enter {
+    color: $red;
+    text-style: bold;
+}
+"""
+
+# --- Screens ---
+
+class WelcomeScreen(Screen):
+    BINDINGS = [("enter", "next", "Next")]
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Center():
+            with Middle():
+                with Vertical(classes="retro-box", id="welcome-container"):
+                    yield Label("Fc Engineering Studio Pro", classes="title")
+                    yield Label("Professional Antibody Fc Sequence Designer", classes="subtitle")
+                    yield Static(ANTIBODY_ASCII, classes="ascii-art")
+                    yield Static("[bold]Overview:[/]\nThis tool helps you design mutant sequences of the human IgG Fc region based on [b]EU Numbering[/b].", id="overview")
+                    yield Label("\nPress ENTER to start...", id="press-enter")
+        yield Footer()
+
+    def action_next(self) -> None:
+        self.app.push_screen(IsotypeScreen())
+
+class IsotypeScreen(Screen):
+    BINDINGS = [("enter", "next", "Next"), ("escape", "back", "Back")]
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Center():
+            with Middle():
+                with Vertical(classes="retro-box"):
+                    yield Label("STEP 1: Select IgG Isotype", classes="subtitle")
+                    yield OptionList(
+                        *[iso.upper() for iso in SEQUENCES.keys()],
+                        id="iso-list"
+                    )
+                    yield Label("\n[dim]Use arrows to select, ENTER to continue[/]")
+        yield Footer()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.action_next()
+
+    def action_next(self) -> None:
+        selected_iso = str(self.query_one("#iso-list").get_option_at_index(self.query_one("#iso-list").highlighted).prompt).lower()
+        self.app.selected_isotype = selected_iso
+        self.app.push_screen(AllotypeScreen())
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
+class AllotypeScreen(Screen):
+    BINDINGS = [("enter", "next", "Next"), ("escape", "back", "Back")]
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Center():
+            with Middle():
+                with Vertical(classes="retro-box"):
+                    yield Label(f"STEP 2: Select {self.app.selected_isotype.upper()} Allotype", classes="subtitle")
+                    allotypes = SEQUENCES.get(self.app.selected_isotype, {})
+                    yield OptionList(
+                        *[allo.capitalize() for allo in allotypes.keys()],
+                        id="allo-list"
+                    )
+                    yield Label("\n[dim]Use arrows to select, ENTER to continue[/]")
+        yield Footer()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.action_next()
+
+    def action_next(self) -> None:
+        selected_allo = str(self.query_one("#allo-list").get_option_at_index(self.query_one("#allo-list").highlighted).prompt).lower()
+        self.app.selected_allotype = selected_allo
+        self.app.push_screen(MutationScreen())
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
+class MutationScreen(Screen):
+    BINDINGS = [("enter", "generate", "Generate"), ("escape", "back", "Back")]
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Center():
+            with Middle():
+                with Vertical(classes="retro-box"):
+                    yield Label("STEP 3: Mutations (Optional)", classes="subtitle")
+                    yield Label("Common Mutations:")
+                    yield SelectionList[str](
+                        *[Selection(item["label"], item["value"], False) for item in COMMON_MUTATIONS],
+                        id="list-common"
+                    )
+                    yield Label("Custom Mutations (e.g. S239D/I332E):")
+                    yield Input(placeholder="None", id="input-custom")
+                    yield Button("Generate FASTA", variant="primary", id="btn-gen")
+        yield Footer()
+
+    def action_generate(self) -> None:
+        selected_presets = self.query_one("#list-common", SelectionList).selected
+        preset_str = "/".join(selected_presets)
+        custom_str = self.query_one("#input-custom", Input).value
+        self.app.all_mutants = "/".join(filter(None, [preset_str, custom_str]))
+        self.app.push_screen(ResultScreen())
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-gen": self.action_generate()
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
+class ResultScreen(Screen):
     BINDINGS = [
-        Binding("ctrl+c", "quit", "Quit"),
-        Binding("enter", "generate", "Generate"),
-        Binding("ctrl+y", "copy_to_clipboard", "Copy"),
+        ("escape", "back", "Back"),
+        ("ctrl+y", "copy_to_clipboard", "Copy"),
+        ("q", "quit_to_main", "Main Menu")
     ]
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Container():
-            with Horizontal():
-                with Vertical(classes="sidebar"):
-                    yield Label("1. Isotype & Allotype")
-                    yield Select([(iso.upper(), iso) for iso in SEQUENCES.keys()], value="igg1" if "igg1" in SEQUENCES else None, id="sel-iso")
-                    yield Select([], id="sel-allo")
-                    
-                    yield Label("2. Common Mutations")
-                    yield SelectionList[str](
-                        [Selection(item["label"], item["value"], False) for item in COMMON_MUTATIONS],
-                        id="list-common"
-                    )
-                    
-                    yield Label("3. Custom Mutants")
-                    yield Input(placeholder="e.g. S239D/I332E", id="input-custom")
-                    
-                    yield Button("Generate Sequence", variant="primary", id="btn-gen")
-                    yield Static("[b]Shortcuts:[/b] [Enter] Gen | [Ctrl+Y] Copy | [Ctrl+C] Quit", classes="help")
-                
-                with Vertical(classes="main-content"):
-                    yield Static(USAGE_GUIDE, id="guide-box")
-                    yield Label("Generated FASTA Sequence")
+        with Center():
+            with Middle():
+                with Vertical(classes="retro-box"):
+                    yield Label("FINAL RESULT: FASTA Sequence", classes="subtitle")
                     yield Log(id="result-box")
+                    yield Static("\n[bold]Shortcuts:[/]\n[b]Ctrl+Y[/]: Copy | [b]Esc[/]: Back | [b]Q[/]: Menu", id="result-help")
         yield Footer()
 
     def on_mount(self) -> None:
-        if "igg1" in SEQUENCES:
-            self.update_allotypes("igg1")
+        self.generate_fasta()
 
-    def update_allotypes(self, isotype: str) -> None:
-        allotypes = SEQUENCES.get(isotype, {})
-        select = self.query_one("#sel-allo", Select)
-        select.set_options([(a.capitalize(), a) for a in allotypes.keys()])
-        if "wt" in allotypes: select.value = "wt"
-        elif allotypes: select.value = list(allotypes.keys())[0]
-
-    def on_select_changed(self, event: Select.Changed) -> None:
-        if event.select.id == "sel-iso" and event.value:
-            self.update_allotypes(str(event.value))
-
-    def action_generate(self) -> None:
-        iso_val = self.query_one("#sel-iso", Select).value
-        allo_val = self.query_one("#sel-allo", Select).value
-        
-        if not iso_val or not allo_val:
-            self.notify("Please select Isotype and Allotype.", severity="error")
-            return
-            
-        isotype = str(iso_val)
-        allotype = str(allo_val)
-        selected_presets = self.query_one("#list-common", SelectionList).selected
-        preset_str = "/".join(selected_presets)
-        custom_str = self.query_one("#input-custom", Input).value
-        all_mutants = "/".join(filter(None, [preset_str, custom_str]))
+    def generate_fasta(self) -> None:
+        isotype = self.app.selected_isotype
+        allotype = self.app.selected_allotype
+        all_mutants = self.app.all_mutants
         
         base_seq = SEQUENCES[isotype][allotype]
         mutant_seq, errors = apply_mutations(base_seq, all_mutants, isotype)
@@ -198,7 +367,7 @@ class MutantApp(App):
         result_box.clear()
         
         if errors:
-            result_box.write("[bold red]Errors found during processing:[/]")
+            result_box.write("[bold red]Errors during processing:[/]")
             for err in errors: result_box.write(f"[red]• {err}[/]")
             return
 
@@ -207,17 +376,34 @@ class MutantApp(App):
         fasta = f">{header}\n{mutant_seq}"
         
         result_box.write(fasta)
-        self.last_fasta = fasta
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-gen": self.action_generate()
+        self.app.last_fasta = fasta
 
     def action_copy_to_clipboard(self) -> None:
-        if hasattr(self, "last_fasta"):
-            pyperclip.copy(self.last_fasta)
-            self.notify("FASTA sequence copied to clipboard!")
-        else:
-            self.notify("Nothing to copy yet.", severity="error")
+        if hasattr(self.app, "last_fasta"):
+            pyperclip.copy(self.app.last_fasta)
+            self.notify("FASTA sequence copied!")
+
+    def action_quit_to_main(self) -> None:
+        while len(self.app.screen_stack) > 1:
+            self.app.pop_screen()
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
+# --- Main App ---
+
+class MutantApp(App):
+    TITLE = "Fc Engineering Studio Pro"
+    CSS = CATPPUCCIN_LATTE + RETRO_STYLE
+    
+    def on_mount(self) -> None:
+        self.selected_isotype = ""
+        self.selected_allotype = ""
+        self.all_mutants = ""
+        self.push_screen(WelcomeScreen())
+
+def main():
+    MutantApp().run()
 
 if __name__ == "__main__":
-    MutantApp().run()
+    main()

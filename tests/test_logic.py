@@ -1,5 +1,5 @@
 import pytest
-from src.main import get_residue_index, parse_mutation, apply_mutations
+from main import get_residue_index, parse_mutation, apply_mutations
 
 def test_get_residue_index_igg1():
     # IgG1은 EU 118부터 연속적임
