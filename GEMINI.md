@@ -1,7 +1,7 @@
-# Fc Engineering Studio Pro - Project Context
+# Fc Engineering Studio - Project Context
 
 ## Project Overview
-Fc Engineering Studio Pro는 인간 IgG Fc(Hinge-CH2-CH3) 영역의 변이 서열을 설계하고 분석하는 Python 기반 TUI(Text User Interface) 애플리케이션입니다. **EU Numbering** 체계를 기준으로 단백질 서열의 특정 잔기(Residue) 위치를 계산하고, 변이(Mutation)를 적용하여 FASTA 형식의 최종 서열을 생성합니다.
+Fc Engineering Studio는 인간 IgG Fc(Hinge-CH2-CH3) 영역의 변이 서열을 설계하고 분석하는 Python 기반 TUI(Text User Interface) 애플리케이션입니다. **EU Numbering** 체계를 기준으로 단백질 서열의 특정 잔기(Residue) 위치를 계산하고, 변이(Mutation)를 적용하여 FASTA 형식의 최종 서열을 생성합니다.
 
 ### 핵심 기술 스택
 - **Language**: Python >= 3.14

@@ -85,147 +85,20 @@ def apply_mutations(sequence: str, mutants_str: str, isotype: str) -> Tuple[str,
         except Exception as e: errors.append(f"Format error ({m}): {str(e)}")
     return "".join(seq_list), errors
 
-# --- Catppuccin Latte Colors & Retro Styling ---
-
-CATPPUCCIN_LATTE = """
-$rosewater: #dc8a78;
-$flamingo: #dd7878;
-$pink: #ea76cb;
-$mauve: #8839ef;
-$red: #d20f39;
-$maroon: #e64553;
-$peach: #fe640b;
-$yellow: #df8e1d;
-$green: #40a02b;
-$teal: #179287;
-$sky: #04a5e5;
-$sapphire: #209fb5;
-$blue: #1e66f5;
-$lavender: #7287fd;
-$text: #4c4f69;
-$subtext1: #5c5f77;
-$subtext0: #6c6f85;
-$overlay2: #7c7f93;
-$overlay1: #8c8fa1;
-$overlay0: #9ca0b0;
-$surface2: #acb0be;
-$surface1: #bcc0cc;
-$surface0: #ccd0da;
-$base: #eff1f5;
-$mantle: #e6e9ef;
-$crust: #dce0e8;
-
-$primary: $blue;
-$secondary: $mauve;
-$accent: $peach;
-$success: $green;
-$error: $red;
-$warning: $yellow;
-"""
-
 ANTIBODY_ASCII = r"""
-     \ /     \ /
-      V       V
-      |       |
-      |---H---|
-      |       |
-      |   C   |
-      |       |
-      \_______/
-"""
-
-RETRO_STYLE = """
-Screen {
-    background: $base;
-    color: $text;
-}
-
-Header {
-    background: $mantle;
-    color: $blue;
-    text-style: bold;
-    border-bottom: heavy $blue;
-}
-
-Footer {
-    background: $mantle;
-    color: $subtext0;
-}
-
-.title {
-    color: $mauve;
-    text-style: bold italic underline;
-    margin-bottom: 1;
-}
-
-.subtitle {
-    color: $subtext1;
-    margin-bottom: 1;
-}
-
-.ascii-art {
-    color: $peach;
-    margin: 1 0;
-}
-
-.retro-box {
-    border: double $blue;
-    background: $surface0;
-    padding: 1 2;
-    margin: 1;
-    width: 80;
-    align: center middle;
-    /* transition: opacity 500ms in_out_cubic; */
-}
-
-Button {
-    background: $surface1;
-    color: $text;
-    border: tall $blue;
-    margin-top: 1;
-}
-
-Button:hover {
-    background: $blue;
-    color: $base;
-}
-
-OptionList {
-    background: $surface0;
-    color: $text;
-    border: double $blue;
-    height: 6;
-}
-
-OptionList > .option-list--highlighted {
-    background: $blue;
-    color: $base;
-}
-
-Log {
-    background: $crust;
-    color: $green;
-    border: double $green;
-    height: 10;
-}
-
-Input {
-    background: $surface0;
-    color: $text;
-    border: double $lavender;
-}
-
-SelectionList {
-    background: $surface0;
-    color: $text;
-    border: double $blue;
-    height: 8;
-}
-
-#press-enter {
-    color: $red;
-    text-style: bold;
-}
+  _____                                                 
+ |  ___|__                                              
+ | |_ / __|                                             
+ |  _| (__         _                      _             
+ |_|__\___|   __ _(_)_ __   ___  ___ _ __(_)_ __   __ _ 
+  / _ \ '_ \ / _` | | '_ \ / _ \/ _ \ '__| | '_ \ / _` |
+ |  __/ | | | (_| | | | | |  __/  __/ |  | | | | | (_| |
+  \___|_| |_|\__, |_|_| |_|\___|\___|_|  |_|_| |_|\__, |
+  ___| |_ _  |___/_| (_) ___                      |___/ 
+ / __| __| | | |/ _` | |/ _ \                           
+ \__ \ |_| |_| | (_| | | (_) |                          
+ |___/\__|\__,_|\__,_|_|\___/                           
+                                                         
 """
 
 # --- Screens ---
@@ -237,12 +110,11 @@ class WelcomeScreen(Screen):
         yield Header()
         with Center():
             with Middle():
-                with Vertical(classes="retro-box", id="welcome-container"):
-                    yield Label("Fc Engineering Studio Pro", classes="title")
-                    yield Label("Professional Antibody Fc Sequence Designer", classes="subtitle")
-                    yield Static(ANTIBODY_ASCII, classes="ascii-art")
-                    yield Static("[bold]Overview:[/]\nThis tool helps you design mutant sequences of the human IgG Fc region based on [b]EU Numbering[/b].", id="overview")
-                    yield Label("\nPress ENTER to start...", id="press-enter")
+                with Vertical(classes="minimal-container", id="welcome-container"):
+                    yield Label("Fc Engineering Studio", classes="title")
+                    yield Label("Antibody Fc Sequence Designer", classes="subtitle")
+                    yield Static("[dim]Design human IgG Fc mutants based on EU Numbering.[/]", id="overview")
+                    yield Label("Press ENTER to start", id="press-enter")
         yield Footer()
 
     def action_next(self) -> None:
@@ -255,13 +127,13 @@ class IsotypeScreen(Screen):
         yield Header()
         with Center():
             with Middle():
-                with Vertical(classes="retro-box"):
-                    yield Label("STEP 1: Select IgG Isotype", classes="subtitle")
+                with Vertical(classes="minimal-container"):
+                    yield Label("STEP 1", classes="title")
+                    yield Label("Select IgG Isotype", classes="subtitle")
                     yield OptionList(
                         *[iso.upper() for iso in SEQUENCES.keys()],
                         id="iso-list"
                     )
-                    yield Label("\n[dim]Use arrows to select, ENTER to continue[/]")
         yield Footer()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
@@ -282,14 +154,14 @@ class AllotypeScreen(Screen):
         yield Header()
         with Center():
             with Middle():
-                with Vertical(classes="retro-box"):
-                    yield Label(f"STEP 2: Select {self.app.selected_isotype.upper()} Allotype", classes="subtitle")
+                with Vertical(classes="minimal-container"):
+                    yield Label("STEP 2", classes="title")
+                    yield Label(f"Select {self.app.selected_isotype.upper()} Allotype", classes="subtitle")
                     allotypes = SEQUENCES.get(self.app.selected_isotype, {})
                     yield OptionList(
                         *[allo.capitalize() for allo in allotypes.keys()],
                         id="allo-list"
                     )
-                    yield Label("\n[dim]Use arrows to select, ENTER to continue[/]")
         yield Footer()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
@@ -310,14 +182,15 @@ class MutationScreen(Screen):
         yield Header()
         with Center():
             with Middle():
-                with Vertical(classes="retro-box"):
-                    yield Label("STEP 3: Mutations (Optional)", classes="subtitle")
-                    yield Label("Common Mutations:")
+                with Vertical(classes="minimal-container"):
+                    yield Label("STEP 3", classes="title")
+                    yield Label("Mutations (Optional)", classes="subtitle")
+                    yield Label("Presets:", classes="subtitle")
                     yield SelectionList[str](
                         *[Selection(item["label"], item["value"], False) for item in COMMON_MUTATIONS],
                         id="list-common"
                     )
-                    yield Label("Custom Mutations (e.g. S239D/I332E):")
+                    yield Label("Custom (e.g. S239D/I332E):", classes="subtitle")
                     yield Input(placeholder="None", id="input-custom")
                     yield Button("Generate FASTA", variant="primary", id="btn-gen")
         yield Footer()
@@ -346,10 +219,11 @@ class ResultScreen(Screen):
         yield Header()
         with Center():
             with Middle():
-                with Vertical(classes="retro-box"):
-                    yield Label("FINAL RESULT: FASTA Sequence", classes="subtitle")
+                with Vertical(classes="minimal-container"):
+                    yield Label("RESULT", classes="title")
+                    yield Label("FASTA Sequence", classes="subtitle")
                     yield Log(id="result-box")
-                    yield Static("\n[bold]Shortcuts:[/]\n[b]Ctrl+Y[/]: Copy | [b]Esc[/]: Back | [b]Q[/]: Menu", id="result-help")
+                    yield Static("[dim]Ctrl+Y: Copy | Esc: Back | Q: Menu[/]", id="result-help")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -393,14 +267,15 @@ class ResultScreen(Screen):
 # --- Main App ---
 
 class MutantApp(App):
-    TITLE = "Fc Engineering Studio Pro"
-    CSS = CATPPUCCIN_LATTE + RETRO_STYLE
+    TITLE = "Fc Engineering Studio"
     
     def on_mount(self) -> None:
+        self.theme = "nord"
         self.selected_isotype = ""
         self.selected_allotype = ""
         self.all_mutants = ""
         self.push_screen(WelcomeScreen())
+
 
 def main():
     MutantApp().run()
