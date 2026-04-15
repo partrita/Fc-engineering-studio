@@ -3,8 +3,9 @@ import os
 from typing import Dict, List, Optional, Tuple, Set
 import yaml
 
+from textual import on
 from textual.app import App, ComposeResult
-from textual.containers import Container, Vertical, Center, Middle
+from textual.containers import Container, Vertical, Center, Middle, Horizontal
 from textual.widgets import (
     Button,
     Footer,
@@ -15,7 +16,9 @@ from textual.widgets import (
     Static,
     SelectionList,
     OptionList,
+    Pretty,
 )
+
 from textual.widgets.selection_list import Selection
 from textual.binding import Binding
 from textual.screen import Screen
@@ -108,13 +111,11 @@ class WelcomeScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Center():
-            with Middle():
-                with Vertical(classes="minimal-container", id="welcome-container"):
-                    yield Label("Fc Engineering Studio", classes="title")
-                    yield Label("Antibody Fc Sequence Designer", classes="subtitle")
-                    yield Static("[dim]Design human IgG Fc mutants based on EU Numbering.[/]", id="overview")
-                    yield Label("Press ENTER to start", id="press-enter")
+        with Vertical(classes="minimal-container", id="welcome-container"):
+            yield Static(ANTIBODY_ASCII, id="antibody-ascii")
+            yield Label("Antibody Fc Sequence Designer", classes="subtitle")
+            yield Static("[dim]Design human IgG Fc mutants based on EU Numbering.[/]", id="overview")
+            yield Label("Press ENTER to start", id="press-enter")
         yield Footer()
 
     def action_next(self) -> None:
@@ -125,15 +126,13 @@ class IsotypeScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Center():
-            with Middle():
-                with Vertical(classes="minimal-container"):
-                    yield Label("STEP 1", classes="title")
-                    yield Label("Select IgG Isotype", classes="subtitle")
-                    yield OptionList(
-                        *[iso.upper() for iso in SEQUENCES.keys()],
-                        id="iso-list"
-                    )
+        with Vertical(classes="minimal-container"):
+            yield Label("STEP 1", classes="title")
+            yield Label("Select IgG Isotype", classes="subtitle")
+            yield OptionList(
+                *[iso.upper() for iso in SEQUENCES.keys()],
+                id="iso-list"
+            )
         yield Footer()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
@@ -152,16 +151,14 @@ class AllotypeScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Center():
-            with Middle():
-                with Vertical(classes="minimal-container"):
-                    yield Label("STEP 2", classes="title")
-                    yield Label(f"Select {self.app.selected_isotype.upper()} Allotype", classes="subtitle")
-                    allotypes = SEQUENCES.get(self.app.selected_isotype, {})
-                    yield OptionList(
-                        *[allo.capitalize() for allo in allotypes.keys()],
-                        id="allo-list"
-                    )
+        with Vertical(classes="minimal-container"):
+            yield Label("STEP 2", classes="title")
+            yield Label(f"Select {self.app.selected_isotype.upper()} Allotype", classes="subtitle")
+            allotypes = SEQUENCES.get(self.app.selected_isotype, {})
+            yield OptionList(
+                *[allo.capitalize() for allo in allotypes.keys()],
+                id="allo-list"
+            )
         yield Footer()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
@@ -180,20 +177,28 @@ class MutationScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Center():
-            with Middle():
-                with Vertical(classes="minimal-container"):
-                    yield Label("STEP 3", classes="title")
-                    yield Label("Mutations (Optional)", classes="subtitle")
-                    yield Label("Presets:", classes="subtitle")
-                    yield SelectionList[str](
-                        *[Selection(item["label"], item["value"], False) for item in COMMON_MUTATIONS],
-                        id="list-common"
-                    )
-                    yield Label("Custom (e.g. S239D/I332E):", classes="subtitle")
-                    yield Input(placeholder="None", id="input-custom")
-                    yield Button("Generate FASTA", variant="primary", id="btn-gen")
+        with Vertical(classes="minimal-container"):
+            yield Label("STEP 3", classes="title")
+            yield Label("Mutations (Optional)", classes="subtitle")
+            yield Label("Presets:", classes="subtitle")
+            with Horizontal(id="selection-area"):
+                yield SelectionList[str](
+                    *[Selection(item["label"], item["value"], False) for item in COMMON_MUTATIONS],
+                    id="list-common"
+                )
+                yield Pretty([], id="selected-preview")
+            yield Label("Custom (e.g. S239D/I332E):", classes="subtitle")
+            yield Input(placeholder="None", id="input-custom")
+            yield Button("Generate FASTA", variant="primary", id="btn-gen")
         yield Footer()
+
+    def on_mount(self) -> None:
+        self.query_one("#list-common").border_title = "Common Mutants"
+        self.query_one("#selected-preview").border_title = "Selected"
+
+    @on(SelectionList.SelectedChanged)
+    def update_selected_view(self) -> None:
+        self.query_one("#selected-preview", Pretty).update(self.query_one("#list-common", SelectionList).selected)
 
     def action_generate(self) -> None:
         selected_presets = self.query_one("#list-common", SelectionList).selected
@@ -217,13 +222,11 @@ class ResultScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Center():
-            with Middle():
-                with Vertical(classes="minimal-container"):
-                    yield Label("RESULT", classes="title")
-                    yield Label("FASTA Sequence", classes="subtitle")
-                    yield Log(id="result-box")
-                    yield Static("[dim]Ctrl+Y: Copy | Esc: Back | Q: Menu[/]", id="result-help")
+        with Vertical(classes="minimal-container"):
+            yield Label("RESULT", classes="title")
+            yield Label("FASTA Sequence", classes="subtitle")
+            yield Log(id="result-box")
+            yield Static("[dim]Ctrl+Y: Copy | Esc: Back | Q: Menu[/]", id="result-help")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -268,6 +271,107 @@ class ResultScreen(Screen):
 
 class MutantApp(App):
     TITLE = "Fc Engineering Studio"
+    CSS = """
+    Screen {
+        align: center middle;
+    }
+
+    .minimal-container {
+        width: 70;
+        height: auto;
+        padding: 1 2;
+        background: $panel;
+        color: $text;
+        border: $secondary tall;
+    }
+
+    .title {
+        text-align: center;
+        width: 100%;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+
+    .subtitle {
+        text-align: center;
+        width: 100%;
+        margin-bottom: 1;
+    }
+
+    SelectionList {
+        padding: 1;
+        border: solid $accent;
+        width: 80%;
+        height: 80%;
+    }
+
+    SelectionList .selection-list--button {
+        background: transparent;
+        color: transparent;
+    }
+
+    SelectionList .selection-list--button-selected {
+        background: $accent;
+        color: white;
+        text-style: bold;
+    }
+
+    SelectionList .selection-list--button-highlighted {
+        background: transparent;
+        color: transparent;
+    }
+
+    SelectionList .selection-list--button-selected-highlighted {
+        background: $accent;
+        color: white;
+        text-style: bold;
+    }
+
+    #antibody-ascii {
+        width: 100%;
+        text-align: center;
+        color: $accent;
+        margin-bottom: 1;
+    }
+
+    #iso-list, #allo-list {
+        height: 10;
+        border: solid $accent;
+    }
+
+    #list-common {
+        /* Overridden by SelectionList styles if needed */
+    }
+
+    #selected-preview {
+        width: 1fr;
+        height: 10;
+        border: solid $accent;
+    }
+
+    #selection-area {
+        height: 12;
+    }
+
+    #input-custom {
+        margin-bottom: 1;
+    }
+
+    #btn-gen {
+        width: 100%;
+    }
+
+    #result-box {
+        height: 10;
+        border: solid $accent;
+        margin-bottom: 1;
+    }
+
+    #result-help {
+        text-align: center;
+        width: 100%;
+    }
+    """
     
     def on_mount(self) -> None:
         self.theme = "nord"
