@@ -23,6 +23,7 @@ from textual.widgets.selection_list import Selection
 from textual.binding import Binding
 from textual.screen import Screen
 import pyperclip
+from rich.markup import escape
 
 # --- Configuration & Data Loading ---
 
@@ -245,14 +246,16 @@ class ResultScreen(Screen):
         
         if errors:
             result_box.write("[bold red]Errors during processing:[/]")
-            for err in errors: result_box.write(f"[red]• {err}[/]")
+            # SECURITY: Escape user-provided input in errors to prevent Rich markup injection
+            for err in errors: result_box.write(f"[red]• {escape(err)}[/]")
             return
 
         display_muts = all_mutants.replace("/", "_") if all_mutants else "WT"
         header = f"{isotype.upper()}_{allotype.capitalize()}_{display_muts}"
         fasta = f">{header}\n{mutant_seq}"
         
-        result_box.write(fasta)
+        # SECURITY: Escape user-provided sequence/header data to prevent Rich markup injection
+        result_box.write(escape(fasta))
         self.app.last_fasta = fasta
 
     def action_copy_to_clipboard(self) -> None:
