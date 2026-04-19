@@ -144,7 +144,11 @@ class IsotypeScreen(Screen):
         self.action_next()
 
     def action_next(self) -> None:
-        selected_iso = str(self.query_one("#iso-list").get_option_at_index(self.query_one("#iso-list").highlighted).prompt).lower()
+        iso_list = self.query_one("#iso-list", OptionList)
+        if iso_list.highlighted is None:
+            self.notify("Please select an Isotype.", severity="warning")
+            return
+        selected_iso = str(iso_list.get_option_at_index(iso_list.highlighted).prompt).lower()
         self.app.selected_isotype = selected_iso
         self.app.push_screen(AllotypeScreen())
 
@@ -170,7 +174,11 @@ class AllotypeScreen(Screen):
         self.action_next()
 
     def action_next(self) -> None:
-        selected_allo = str(self.query_one("#allo-list").get_option_at_index(self.query_one("#allo-list").highlighted).prompt).lower()
+        allo_list = self.query_one("#allo-list", OptionList)
+        if allo_list.highlighted is None:
+            self.notify("Please select an Allotype.", severity="warning")
+            return
+        selected_allo = str(allo_list.get_option_at_index(allo_list.highlighted).prompt).lower()
         self.app.selected_allotype = selected_allo
         self.app.push_screen(MutationScreen())
 
@@ -242,25 +250,34 @@ class ResultScreen(Screen):
         allotype = self.app.selected_allotype
         all_mutants = self.app.all_mutants
         
-        base_seq = SEQUENCES[isotype][allotype]
-        mutant_seq, errors = apply_mutations(base_seq, all_mutants, isotype)
-        
         result_box = self.query_one("#result-box", Log)
         result_box.clear()
-        
-        if errors:
-            result_box.write("[bold red]Errors during processing:[/]")
-            # SECURITY: Escape user-provided input in errors to prevent Rich markup injection
-            for err in errors: result_box.write(f"[red]• {escape(err)}[/]")
-            return
 
-        display_muts = all_mutants.replace("/", "_") if all_mutants else "WT"
-        header = f"{isotype.upper()}_{allotype.capitalize()}_{display_muts}"
-        fasta = f">{header}\n{mutant_seq}"
-        
-        # SECURITY: Escape user-provided sequence/header data to prevent Rich markup injection
-        result_box.write(escape(fasta))
-        self.app.last_fasta = fasta
+        try:
+            isotype_data = SEQUENCES.get(isotype, {})
+            base_seq = isotype_data.get(allotype)
+            if not base_seq:
+                result_box.write(f"[bold red]Error: Base sequence for {isotype} {allotype} not found.[/]")
+                return
+
+            mutant_seq, errors = apply_mutations(base_seq, all_mutants, isotype)
+
+            if errors:
+                result_box.write("[bold red]Errors during processing:[/]")
+                # SECURITY: Escape user-provided input in errors to prevent Rich markup injection
+                for err in errors: result_box.write(f"[red]• {escape(err)}[/]")
+                return
+
+            display_muts = all_mutants.replace("/", "_") if all_mutants else "WT"
+            header = f"{isotype.upper()}_{allotype.capitalize()}_{display_muts}"
+            fasta = f">{header}\n{mutant_seq}"
+
+            # SECURITY: Escape user-provided sequence/header data to prevent Rich markup injection
+            result_box.write(escape(fasta))
+            self.app.last_fasta = fasta
+        except Exception as e:
+            result_box.write("[bold red]An unexpected error occurred during sequence generation.[/]")
+            self.log.error(f"Error in generate_fasta: {str(e)}")
 
     def action_copy_to_clipboard(self) -> None:
         if hasattr(self.app, "last_fasta"):
