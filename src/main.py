@@ -69,7 +69,8 @@ def get_residue_index(pos: int, isotype: str) -> Optional[int]:
     return None
 
 def parse_mutation(m_str: str) -> Tuple[str, int, str]:
-    if not re.match(r"^[a-zA-Z]\d+[a-zA-Z]$", m_str):
+    m_str = m_str.upper()
+    if not re.match(r"^[A-Z]\d+[A-Z]$", m_str):
         raise ValueError(f"Invalid mutation format: {m_str}")
     wt_aa = m_str[0]
     pos = int(m_str[1:-1])
