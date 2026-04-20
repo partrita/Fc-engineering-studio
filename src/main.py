@@ -148,7 +148,7 @@ class IsotypeScreen(Screen):
         if iso_list.highlighted is None:
             self.notify("Please select an Isotype.", severity="warning")
             return
-        selected_iso = str(iso_list.get_option_at_index(iso_list.highlighted).prompt).lower()
+        selected_iso = list(SEQUENCES.keys())[iso_list.highlighted]
         self.app.selected_isotype = selected_iso
         self.app.push_screen(AllotypeScreen())
 
