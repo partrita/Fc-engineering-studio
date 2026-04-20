@@ -257,7 +257,7 @@ class ResultScreen(Screen):
             isotype_data = SEQUENCES.get(isotype, {})
             base_seq = isotype_data.get(allotype)
             if not base_seq:
-                result_box.write(f"[bold red]Error: Base sequence for {isotype} {allotype} not found.[/]")
+                result_box.write(f"[bold red]Error: Base sequence for {escape(isotype)} {escape(allotype)} not found.[/]")
                 return
 
             mutant_seq, errors = apply_mutations(base_seq, all_mutants, isotype)
