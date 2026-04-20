@@ -178,7 +178,7 @@ class AllotypeScreen(Screen):
         if allo_list.highlighted is None:
             self.notify("Please select an Allotype.", severity="warning")
             return
-        selected_allo = str(allo_list.get_option_at_index(allo_list.highlighted).prompt).lower()
+        selected_allo = list(SEQUENCES.get(self.app.selected_isotype, {}).keys())[allo_list.highlighted]
         self.app.selected_allotype = selected_allo
         self.app.push_screen(MutationScreen())
 
