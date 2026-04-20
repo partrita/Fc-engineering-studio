@@ -40,7 +40,8 @@ def load_yaml_data():
         if os.path.exists(seq_path):
             with open(seq_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
-                isotypes = data.get("isotypes", {})
+                if isinstance(data, dict):
+                    isotypes = data.get("isotypes", {})
     except Exception as e:
         pass
 
@@ -48,7 +49,8 @@ def load_yaml_data():
         if os.path.exists(mut_path):
             with open(mut_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
-                common_muts = data.get("common_mutations", [])
+                if isinstance(data, dict):
+                    common_muts = data.get("common_mutations", [])
     except Exception as e:
         pass
         
@@ -144,13 +146,17 @@ class IsotypeScreen(Screen):
         self.action_next()
 
     def action_next(self) -> None:
-        iso_list = self.query_one("#iso-list", OptionList)
-        if iso_list.highlighted is None:
-            self.notify("Please select an Isotype.", severity="warning")
-            return
-        selected_iso = list(SEQUENCES.keys())[iso_list.highlighted]
-        self.app.selected_isotype = selected_iso
-        self.app.push_screen(AllotypeScreen())
+        try:
+            iso_list = self.query_one("#iso-list", OptionList)
+            if iso_list.highlighted is None:
+                self.notify("Please select an Isotype.", severity="warning")
+                return
+            selected_iso = list(SEQUENCES.keys())[iso_list.highlighted]
+            self.app.selected_isotype = selected_iso
+            self.app.push_screen(AllotypeScreen())
+        except Exception as e:
+            self.log.error(f"Error in IsotypeScreen.action_next: {e}", exc_info=True)
+            self.notify("An error occurred. Please check configuration.", severity="error")
 
     def action_back(self) -> None:
         self.app.pop_screen()
@@ -164,6 +170,8 @@ class AllotypeScreen(Screen):
             yield Label("STEP 2", classes="title")
             yield Label(f"Select {self.app.selected_isotype.upper()} Allotype", classes="subtitle")
             allotypes = SEQUENCES.get(self.app.selected_isotype, {})
+            if not isinstance(allotypes, dict):
+                allotypes = {}
             yield OptionList(
                 *[allo.capitalize() for allo in allotypes.keys()],
                 id="allo-list"
@@ -174,13 +182,20 @@ class AllotypeScreen(Screen):
         self.action_next()
 
     def action_next(self) -> None:
-        allo_list = self.query_one("#allo-list", OptionList)
-        if allo_list.highlighted is None:
-            self.notify("Please select an Allotype.", severity="warning")
-            return
-        selected_allo = list(SEQUENCES.get(self.app.selected_isotype, {}).keys())[allo_list.highlighted]
-        self.app.selected_allotype = selected_allo
-        self.app.push_screen(MutationScreen())
+        try:
+            allo_list = self.query_one("#allo-list", OptionList)
+            if allo_list.highlighted is None:
+                self.notify("Please select an Allotype.", severity="warning")
+                return
+            allotypes = SEQUENCES.get(self.app.selected_isotype, {})
+            if not isinstance(allotypes, dict):
+                allotypes = {}
+            selected_allo = list(allotypes.keys())[allo_list.highlighted]
+            self.app.selected_allotype = selected_allo
+            self.app.push_screen(MutationScreen())
+        except Exception as e:
+            self.log.error(f"Error in AllotypeScreen.action_next: {e}", exc_info=True)
+            self.notify("An error occurred. Please check configuration.", severity="error")
 
     def action_back(self) -> None:
         self.app.pop_screen()
@@ -196,7 +211,7 @@ class MutationScreen(Screen):
             yield Label("Presets:", classes="subtitle")
             with Horizontal(id="selection-area"):
                 yield SelectionList[str](
-                    *[Selection(item["label"], item["value"], False) for item in COMMON_MUTATIONS],
+                    *[Selection(item.get("label", "Unknown"), item.get("value", ""), False) for item in COMMON_MUTATIONS if isinstance(item, dict)],
                     id="list-common"
                 )
                 yield Pretty([], id="selected-preview")
@@ -281,8 +296,12 @@ class ResultScreen(Screen):
 
     def action_copy_to_clipboard(self) -> None:
         if hasattr(self.app, "last_fasta"):
-            pyperclip.copy(self.app.last_fasta)
-            self.notify("FASTA sequence copied!")
+            try:
+                pyperclip.copy(self.app.last_fasta)
+                self.notify("FASTA sequence copied!")
+            except Exception as e:
+                self.log.error(f"Error copying to clipboard: {e}", exc_info=True)
+                self.notify("Error copying to clipboard. See logs.", severity="error")
 
     def action_quit_to_main(self) -> None:
         while len(self.app.screen_stack) > 1:
