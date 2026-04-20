@@ -41,7 +41,8 @@ def load_yaml_data():
             with open(seq_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
                 if isinstance(data, dict):
-                    isotypes = data.get("isotypes", {})
+                    val = data.get("isotypes")
+                    isotypes = val if isinstance(val, dict) else {}
     except Exception as e:
         pass
 
