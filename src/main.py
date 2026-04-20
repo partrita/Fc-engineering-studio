@@ -277,7 +277,7 @@ class ResultScreen(Screen):
             self.app.last_fasta = fasta
         except Exception as e:
             result_box.write("[bold red]An unexpected error occurred during sequence generation.[/]")
-            self.log.error(f"Error in generate_fasta: {str(e)}")
+            self.log.error(f"Error in generate_fasta: {e}", exc_info=True)
 
     def action_copy_to_clipboard(self) -> None:
         if hasattr(self.app, "last_fasta"):
