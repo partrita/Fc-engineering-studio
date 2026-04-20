@@ -51,7 +51,8 @@ def load_yaml_data():
             with open(mut_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
                 if isinstance(data, dict):
-                    common_muts = data.get("common_mutations", [])
+                    val = data.get("common_mutations")
+                    common_muts = val if isinstance(val, list) else []
     except Exception as e:
         pass
         
