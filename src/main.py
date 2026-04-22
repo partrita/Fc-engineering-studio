@@ -73,6 +73,8 @@ def get_residue_index(pos: int, isotype: str) -> Optional[int]:
     return None
 
 def parse_mutation(m_str: str) -> Tuple[str, int, str]:
+    if len(m_str) > 10:
+        raise ValueError(f"Mutation string too long: {len(m_str)}")
     m_str = m_str.upper()
     if not re.fullmatch(r"[A-Z]\d+[A-Z]", m_str):
         raise ValueError(f"Invalid mutation format: {m_str}")
@@ -84,6 +86,10 @@ def parse_mutation(m_str: str) -> Tuple[str, int, str]:
 def apply_mutations(sequence: str, mutants_str: str, isotype: str) -> Tuple[str, List[str]]:
     if not mutants_str: return sequence, []
     mut_list = [m.strip() for m in mutants_str.replace(',', '/').split('/') if m.strip()]
+
+    if len(mut_list) > 50:
+        return sequence, ["Error: Maximum of 50 mutations allowed."]
+
     seq_list = list(sequence)
     errors = []
     for m in mut_list:
