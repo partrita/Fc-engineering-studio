@@ -74,7 +74,7 @@ def get_residue_index(pos: int, isotype: str) -> Optional[int]:
 
 def parse_mutation(m_str: str) -> Tuple[str, int, str]:
     m_str = m_str.upper()
-    if not re.match(r"^[A-Z]\d+[A-Z]$", m_str):
+    if not re.fullmatch(r"[A-Z]\d+[A-Z]", m_str):
         raise ValueError(f"Invalid mutation format: {m_str}")
     wt_aa = m_str[0]
     pos = int(m_str[1:-1])
@@ -218,7 +218,7 @@ class MutationScreen(Screen):
                 )
                 yield Pretty([], id="selected-preview")
             yield Label("Custom (e.g. S239D/I332E):", classes="subtitle")
-            yield Input(placeholder="None", id="input-custom", max_length=100, restrict=r"^[a-zA-Z0-9/,\s]*$")
+            yield Input(placeholder="None", id="input-custom", max_length=100, restrict=r"^[a-zA-Z0-9/, ]*\Z")
             yield Button("Generate FASTA", variant="primary", id="btn-gen")
         yield Footer()
 
