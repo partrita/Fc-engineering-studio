@@ -74,7 +74,7 @@ def get_residue_index(pos: int, isotype: str) -> Optional[int]:
 
 def parse_mutation(m_str: str) -> Tuple[str, int, str]:
     if len(m_str) > 10:
-        raise ValueError(f"Mutation string too long: {len(m_str)}")
+        raise ValueError(f"Mutation string too long (max 10): {len(m_str)}")
     m_str = m_str.upper()
     if not re.fullmatch(r"[A-Z]\d+[A-Z]", m_str):
         raise ValueError(f"Invalid mutation format: {m_str}")
