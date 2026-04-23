@@ -87,8 +87,9 @@ def apply_mutations(sequence: str, mutants_str: str, isotype: str) -> Tuple[str,
     if not mutants_str: return sequence, []
     mut_list = [m.strip() for m in mutants_str.replace(',', '/').split('/') if m.strip()]
 
-    if len(mut_list) > 50:
-        return sequence, ["Error: Maximum of 50 mutations allowed."]
+    MAX_MUTATIONS = 50
+    if len(mut_list) > MAX_MUTATIONS:
+        return sequence, [f"Error: Maximum of {MAX_MUTATIONS} mutations allowed."]
 
     seq_list = list(sequence)
     errors = []
