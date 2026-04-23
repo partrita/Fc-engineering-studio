@@ -17,3 +17,8 @@
 **Vulnerability:** The application used `$` as an end-of-string anchor in `re.match` for input validation (e.g., parsing mutations). In Python, `$` matches either the end of the string OR just before a trailing newline. This allowed inputs with trailing newlines (e.g., `A118X\n`) to pass validation but cause unhandled exceptions later when parsing (e.g., `int()` on sliced strings).
 **Learning:** Python's `re` module behavior for `$` can lead to validation bypasses if inputs contain trailing newlines. The `\Z` anchor should be used for strict end-of-string matching.
 **Prevention:** Always use `\Z` instead of `$` in Python regular expressions when strict input format validation is required, and ensure UI input fields restrict whitespace characters to explicitly permitted ones (like a space) rather than the broad `\s` which includes newlines.
+
+## 2024-06-25 - [Missing Input Limits leading to DoS Risk]
+**Vulnerability:** The mutation parser (`parse_mutation`) and processor (`apply_mutations`) lacked bounds checking on the size and quantity of inputs. This exposed the application to potential resource exhaustion (Denial of Service) attacks if a user provided an excessively long mutation string or an enormous list of mutations.
+**Learning:** Even internal or UI-driven string parsing functions need constraints. Regular expressions and loops processing user input without bounds can be abused to consume excessive CPU or memory.
+**Prevention:** Always implement hard limits on input lengths (e.g., max string length) and processing bounds (e.g., maximum number of items in a list) at the core logic layer, regardless of UI-level restrictions.

@@ -50,3 +50,12 @@ def test_apply_mutations_errors():
     # 3. Gap 부위에 변이 시도 (IgG2의 223번)
     _, errors = apply_mutations("ANY_SEQ", "S223P", "igg2")
     assert any("Gap" in e for e in errors)
+
+    # 4. Too many mutations limit
+    many_muts = "/".join([f"A{118+i}X" for i in range(51)])
+    _, errors = apply_mutations(seq, many_muts, "igg1")
+    assert "Maximum of 50 mutations allowed" in errors[0]
+
+    # 5. Mutation string too long
+    _, errors = apply_mutations(seq, "A118X" * 3, "igg1")
+    assert any("too long" in e for e in errors)
