@@ -85,6 +85,11 @@ def parse_mutation(m_str: str) -> Tuple[str, int, str]:
 
 def apply_mutations(sequence: str, mutants_str: str, isotype: str) -> Tuple[str, List[str]]:
     if not mutants_str: return sequence, []
+
+    # SECURITY: Enforce strict length limits on input string to prevent DoS (memory/CPU exhaustion)
+    if len(mutants_str) > 1000:
+        return sequence, ["Error: Mutation string exceeds maximum length of 1000 characters."]
+
     mut_list = [m.strip() for m in mutants_str.replace(',', '/').split('/') if m.strip()]
 
     MAX_MUTATIONS = 50
