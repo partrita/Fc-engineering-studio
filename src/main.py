@@ -36,23 +36,32 @@ def load_yaml_data():
     isotypes = {}
     common_muts = []
     
+    # SECURITY: Prevent DoS via memory exhaustion from massive YAML files (max 1MB)
+    MAX_FILE_SIZE = 1024 * 1024
+
     try:
         if os.path.exists(seq_path):
-            with open(seq_path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-                if isinstance(data, dict):
-                    val = data.get("isotypes")
-                    isotypes = val if isinstance(val, dict) else {}
+            if os.path.getsize(seq_path) > MAX_FILE_SIZE:
+                print(f"Error: {seq_path} exceeds maximum allowed size of 1MB.", file=sys.stderr)
+            else:
+                with open(seq_path, "r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f)
+                    if isinstance(data, dict):
+                        val = data.get("isotypes")
+                        isotypes = val if isinstance(val, dict) else {}
     except Exception as e:
         pass
 
     try:
         if os.path.exists(mut_path):
-            with open(mut_path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-                if isinstance(data, dict):
-                    val = data.get("common_mutations")
-                    common_muts = val if isinstance(val, list) else []
+            if os.path.getsize(mut_path) > MAX_FILE_SIZE:
+                print(f"Error: {mut_path} exceeds maximum allowed size of 1MB.", file=sys.stderr)
+            else:
+                with open(mut_path, "r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f)
+                    if isinstance(data, dict):
+                        val = data.get("common_mutations")
+                        common_muts = val if isinstance(val, list) else []
     except Exception as e:
         pass
         
@@ -243,11 +252,15 @@ class MutationScreen(Screen):
         self.query_one("#selected-preview", Pretty).update(self.query_one("#list-common", SelectionList).selected)
 
     def action_generate(self) -> None:
-        selected_presets = self.query_one("#list-common", SelectionList).selected
-        preset_str = "/".join(selected_presets)
-        custom_str = self.query_one("#input-custom", Input).value
-        self.app.all_mutants = "/".join(filter(None, [preset_str, custom_str]))
-        self.app.push_screen(ResultScreen())
+        try:
+            selected_presets = self.query_one("#list-common", SelectionList).selected
+            preset_str = "/".join(selected_presets)
+            custom_str = self.query_one("#input-custom", Input).value
+            self.app.all_mutants = "/".join(filter(None, [preset_str, custom_str]))
+            self.app.push_screen(ResultScreen())
+        except Exception as e:
+            self.log.error(f"Error in MutationScreen.action_generate: {e}", exc_info=True)
+            self.notify("An error occurred. Please check your inputs.", severity="error")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-gen": self.action_generate()
