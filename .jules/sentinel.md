@@ -22,3 +22,8 @@
 **Vulnerability:** The mutation parser (`parse_mutation`) and processor (`apply_mutations`) lacked bounds checking on the size and quantity of inputs. This exposed the application to potential resource exhaustion (Denial of Service) attacks if a user provided an excessively long mutation string or an enormous list of mutations.
 **Learning:** Even internal or UI-driven string parsing functions need constraints. Regular expressions and loops processing user input without bounds can be abused to consume excessive CPU or memory.
 **Prevention:** Always implement hard limits on input lengths (e.g., max string length) and processing bounds (e.g., maximum number of items in a list) at the core logic layer, regardless of UI-level restrictions.
+
+## 2026-04-26 - [Missing YAML File Size Validation]
+**Vulnerability:** The application loaded configuration `yaml` files without checking their sizes. This exposed a potential Denial of Service (DoS) vulnerability via memory exhaustion, where processing an exceptionally large file would consume excessive resources.
+**Learning:** File input streams must be strictly bounded before parsing content. Relying entirely on safe loaders without checking the incoming buffer size leaves applications vulnerable to resource exhaustion.
+**Prevention:** Always verify file sizes against a defined maximum limit (e.g., 1MB) using `os.path.getsize` before opening and parsing data, particularly with external configuration files or user-provided files.
