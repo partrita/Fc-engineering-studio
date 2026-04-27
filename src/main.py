@@ -301,6 +301,9 @@ class ResultScreen(Screen):
             if not base_seq:
                 result_box.write(f"[bold red]Error: Base sequence for {escape(isotype)} {escape(allotype)} not found.[/]")
                 return
+            if not isinstance(base_seq, str):
+                result_box.write(f"[bold red]Error: Invalid sequence data format for {escape(isotype)} {escape(allotype)}.[/]")
+                return
 
             mutant_seq, errors = apply_mutations(base_seq, all_mutants, isotype)
 
