@@ -23,6 +23,10 @@
 **Learning:** Even internal or UI-driven string parsing functions need constraints. Regular expressions and loops processing user input without bounds can be abused to consume excessive CPU or memory.
 **Prevention:** Always implement hard limits on input lengths (e.g., max string length) and processing bounds (e.g., maximum number of items in a list) at the core logic layer, regardless of UI-level restrictions.
 
+## 2026-04-26 - [Missing YAML File Size Validation]
+**Vulnerability:** The application loaded configuration `yaml` files without checking their sizes. This exposed a potential Denial of Service (DoS) vulnerability via memory exhaustion, where processing an exceptionally large file would consume excessive resources.
+**Learning:** File input streams must be strictly bounded before parsing content. Relying entirely on safe loaders without checking the incoming buffer size leaves applications vulnerable to resource exhaustion.
+**Prevention:** Always verify file sizes against a defined maximum limit (e.g., 1MB) using `os.path.getsize` before opening and parsing data, particularly with external configuration files or user-provided files.
 ## 2024-08-16 - [Missing File Size Limitations for YAML Loading]
 **Vulnerability:** The application used `yaml.safe_load()` without checking the size of the underlying files (`sequences.yaml` and `mutants.yaml`). This allowed the potential for Denial of Service (DoS) attacks via memory exhaustion if a user provided an excessively large file.
 **Learning:** `yaml.safe_load()` prevents arbitrary code execution but does not protect against memory exhaustion from very large files. File sizes should always be validated before attempting to read and parse them into memory.

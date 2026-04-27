@@ -36,32 +36,32 @@ def load_yaml_data():
     isotypes = {}
     common_muts = []
     
-    # SECURITY: Prevent DoS via memory exhaustion from massive YAML files (max 1MB)
-    MAX_FILE_SIZE = 1024 * 1024
+    # SECURITY: Max file size of 1MB to prevent DoS via memory exhaustion
+    MAX_FILE_SIZE = 1 * 1024 * 1024
 
     try:
         if os.path.exists(seq_path):
             if os.path.getsize(seq_path) > MAX_FILE_SIZE:
-                print(f"Error: {seq_path} exceeds maximum allowed size of 1MB.", file=sys.stderr)
-            else:
-                with open(seq_path, "r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f)
-                    if isinstance(data, dict):
-                        val = data.get("isotypes")
-                        isotypes = val if isinstance(val, dict) else {}
+                print(f"Error: {seq_path} exceeds 1MB limit.", file=sys.stderr)
+                raise ValueError(f"File {seq_path} exceeds maximum size of 1MB")
+            with open(seq_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                if isinstance(data, dict):
+                    val = data.get("isotypes")
+                    isotypes = val if isinstance(val, dict) else {}
     except Exception as e:
         pass
 
     try:
         if os.path.exists(mut_path):
             if os.path.getsize(mut_path) > MAX_FILE_SIZE:
-                print(f"Error: {mut_path} exceeds maximum allowed size of 1MB.", file=sys.stderr)
-            else:
-                with open(mut_path, "r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f)
-                    if isinstance(data, dict):
-                        val = data.get("common_mutations")
-                        common_muts = val if isinstance(val, list) else []
+                print(f"Error: {mut_path} exceeds 1MB limit.", file=sys.stderr)
+                raise ValueError(f"File {mut_path} exceeds maximum size of 1MB")
+            with open(mut_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                if isinstance(data, dict):
+                    val = data.get("common_mutations")
+                    common_muts = val if isinstance(val, list) else []
     except Exception as e:
         pass
         
