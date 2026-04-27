@@ -23,6 +23,10 @@
 **Learning:** Even internal or UI-driven string parsing functions need constraints. Regular expressions and loops processing user input without bounds can be abused to consume excessive CPU or memory.
 **Prevention:** Always implement hard limits on input lengths (e.g., max string length) and processing bounds (e.g., maximum number of items in a list) at the core logic layer, regardless of UI-level restrictions.
 
+## 2024-08-16 - [Missing File Size Limitations for YAML Loading]
+**Vulnerability:** The application used `yaml.safe_load()` without checking the size of the underlying files (`sequences.yaml` and `mutants.yaml`). This allowed the potential for Denial of Service (DoS) attacks via memory exhaustion if a user provided an excessively large file.
+**Learning:** `yaml.safe_load()` prevents arbitrary code execution but does not protect against memory exhaustion from very large files. File sizes should always be validated before attempting to read and parse them into memory.
+**Prevention:** Implemented a file size check (`os.path.getsize(path) <= MAX_FILE_SIZE`) before opening and parsing YAML files. Added explicit error logging when the limit is exceeded.
 ## 2026-04-24 - [Missing Sequence Type Validation leading to Stack Trace Leak]
 **Vulnerability:** The application retrieved the base sequence from a YAML-sourced dictionary but did not validate its type. If the sequence data was malformed (e.g., an integer or list instead of a string), passing it to the `apply_mutations` function would cause an unhandled `TypeError` (e.g., `'int' object is not iterable`) when attempting to convert it to a list. This would crash the TUI and leak internal Python exception traces.
 **Learning:** In addition to validating the top-level structure of loaded data files (e.g., ensuring the root is a dictionary), deeply nested values that are passed to critical processing logic must also be explicitly type-checked before use to prevent unexpected fail-states and architecture leaks.
