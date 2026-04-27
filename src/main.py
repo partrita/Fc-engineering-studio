@@ -42,6 +42,7 @@ def load_yaml_data():
     try:
         if os.path.exists(seq_path):
             if os.path.getsize(seq_path) > MAX_FILE_SIZE:
+                print(f"Error: {seq_path} exceeds 1MB limit.", file=sys.stderr)
                 raise ValueError(f"File {seq_path} exceeds maximum size of 1MB")
             with open(seq_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
