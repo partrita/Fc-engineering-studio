@@ -55,6 +55,7 @@ def load_yaml_data():
     try:
         if os.path.exists(mut_path):
             if os.path.getsize(mut_path) > MAX_FILE_SIZE:
+                print(f"Error: {mut_path} exceeds 1MB limit.", file=sys.stderr)
                 raise ValueError(f"File {mut_path} exceeds maximum size of 1MB")
             with open(mut_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
