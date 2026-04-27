@@ -85,7 +85,8 @@ def parse_mutation(m_str: str) -> Tuple[str, int, str]:
     if len(m_str) > 10:
         raise ValueError(f"Mutation string too long (max 10): {len(m_str)}")
     m_str = m_str.upper()
-    if not re.fullmatch(r"[A-Z]\d+[A-Z]", m_str):
+    # SECURITY: Use [0-9] instead of \d to strictly enforce ASCII digits and prevent Unicode digit injection
+    if not re.fullmatch(r"[A-Z][0-9]+[A-Z]", m_str):
         raise ValueError(f"Invalid mutation format: {m_str}")
     wt_aa = m_str[0]
     pos = int(m_str[1:-1])
