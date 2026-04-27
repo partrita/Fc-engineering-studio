@@ -250,11 +250,15 @@ class MutationScreen(Screen):
         self.query_one("#selected-preview", Pretty).update(self.query_one("#list-common", SelectionList).selected)
 
     def action_generate(self) -> None:
-        selected_presets = self.query_one("#list-common", SelectionList).selected
-        preset_str = "/".join(selected_presets)
-        custom_str = self.query_one("#input-custom", Input).value
-        self.app.all_mutants = "/".join(filter(None, [preset_str, custom_str]))
-        self.app.push_screen(ResultScreen())
+        try:
+            selected_presets = self.query_one("#list-common", SelectionList).selected
+            preset_str = "/".join(selected_presets)
+            custom_str = self.query_one("#input-custom", Input).value
+            self.app.all_mutants = "/".join(filter(None, [preset_str, custom_str]))
+            self.app.push_screen(ResultScreen())
+        except Exception as e:
+            self.log.error(f"Error in MutationScreen.action_generate: {e}", exc_info=True)
+            self.notify("An error occurred. Please check your inputs.", severity="error")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-gen": self.action_generate()
@@ -294,6 +298,9 @@ class ResultScreen(Screen):
             base_seq = isotype_data.get(allotype)
             if not base_seq:
                 result_box.write(f"[bold red]Error: Base sequence for {escape(isotype)} {escape(allotype)} not found.[/]")
+                return
+            if not isinstance(base_seq, str):
+                result_box.write(f"[bold red]Error: Invalid sequence data format for {escape(isotype)} {escape(allotype)}.[/]")
                 return
 
             mutant_seq, errors = apply_mutations(base_seq, all_mutants, isotype)
