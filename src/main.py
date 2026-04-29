@@ -298,6 +298,8 @@ class ResultScreen(Screen):
 
         try:
             isotype_data = SEQUENCES.get(isotype, {})
+            if not isinstance(isotype_data, dict):
+                isotype_data = {}
             base_seq = isotype_data.get(allotype)
             if not base_seq:
                 result_box.write(f"[bold red]Error: Base sequence for {escape(isotype)} {escape(allotype)} not found.[/]")
