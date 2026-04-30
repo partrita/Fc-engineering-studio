@@ -48,7 +48,7 @@ def load_yaml_data():
                 data = yaml.safe_load(f)
                 if isinstance(data, dict):
                     val = data.get("isotypes")
-                    isotypes = val if isinstance(val, dict) else {}
+                    isotypes = val if isinstance(val, dict) and all(isinstance(k, str) and isinstance(v, dict) for k, v in val.items()) else {}
     except Exception as e:
         pass
 
@@ -61,7 +61,7 @@ def load_yaml_data():
                 data = yaml.safe_load(f)
                 if isinstance(data, dict):
                     val = data.get("common_mutations")
-                    common_muts = val if isinstance(val, list) else []
+                    common_muts = val if isinstance(val, list) and all(isinstance(item, dict) for item in val) else []
     except Exception as e:
         pass
         
