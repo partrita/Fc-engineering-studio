@@ -68,7 +68,7 @@ def load_yaml_data():
                     val = data.get("common_mutations")
                     common_muts = val if (
                         isinstance(val, list) and all(
-                            isinstance(item, dict) and isinstance(item.get("value"), str)
+                            isinstance(item, dict) and isinstance(item.get("value"), str) and isinstance(item.get("label"), str)
                             for item in val
                         )
                     ) else []
