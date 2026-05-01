@@ -48,7 +48,12 @@ def load_yaml_data():
                 data = yaml.safe_load(f)
                 if isinstance(data, dict):
                     val = data.get("isotypes")
-                    isotypes = val if isinstance(val, dict) and all(isinstance(k, str) and isinstance(v, dict) for k, v in val.items()) else {}
+                    isotypes = val if (
+                        isinstance(val, dict) and all(
+                            isinstance(k, str) and isinstance(v, dict) and all(isinstance(ik, str) for ik in v)
+                            for k, v in val.items()
+                        )
+                    ) else {}
     except Exception as e:
         pass
 
