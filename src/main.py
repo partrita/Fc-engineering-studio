@@ -61,7 +61,12 @@ def load_yaml_data():
                 data = yaml.safe_load(f)
                 if isinstance(data, dict):
                     val = data.get("common_mutations")
-                    common_muts = val if isinstance(val, list) and all(isinstance(item, dict) for item in val) else []
+                    common_muts = val if (
+                        isinstance(val, list) and all(
+                            isinstance(item, dict) and isinstance(item.get("value"), str)
+                            for item in val
+                        )
+                    ) else []
     except Exception as e:
         pass
         
