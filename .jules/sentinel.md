@@ -52,3 +52,13 @@
 **Vulnerability:** The application retrieved the base sequence from a YAML-sourced dictionary but did not validate the intermediate dictionary's type (e.g., `isotype_data`). If the `yaml` file contained invalid data (e.g., `isotypes: { igg1: "not a dict" }`), calling `isotype_data.get(allotype)` would raise an `AttributeError` on a string, crashing the TUI and leaking internal Python exception traces.
 **Learning:** In addition to validating the top-level structure of loaded data files, deeply nested values that are passed to critical processing logic (or used as dictionaries) must also be explicitly type-checked before use to prevent unexpected fail-states and architecture leaks.
 **Prevention:** Always validate the type of data retrieved from configuration files (e.g., using `isinstance(val, dict)`) before calling dictionary methods like `.get()` on it.
+
+## 2024-05-24 - [Unnecessary Markup Escaping on Trusted Internal Data]
+**Vulnerability:** The application was proposed to have Rich markup injection vulnerabilities from strings loaded via static internal configuration YAML files (e.g. `sequences.yaml`).
+**Learning:** Escaping markup on trusted internal data files that are not modified by end users is a form of "security theater". If an attacker can modify internal application source or config files, they already have a higher level of compromise.
+**Prevention:** Focus input escaping specifically on actual external user input paths, rather than treating trusted internal static configurations as a threat model.
+
+## 2024-05-24 - [Missing Type Validation for List Labels in TUI]
+**Vulnerability:** The application loaded `common_mutations` presets from a YAML file, checking that `value` was a string but omitting the type check for `label`. The UI component `SelectionList` expects a string for the prompt label. Providing a malformed YAML containing list types or integers as labels would crash the application with a `TypeError` and leak stack traces to the terminal.
+**Learning:** All properties loaded from YAML that interact with specific UI expectations (e.g., Textual labels) must be strictly type-checked.
+**Prevention:** Ensured `isinstance(item.get("label"), str)` is verified before returning the parsed presets from `load_yaml_data`.
