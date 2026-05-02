@@ -28,6 +28,12 @@ from rich.markup import escape
 
 # --- Configuration & Data Loading ---
 
+class NoAliasSafeLoader(yaml.SafeLoader):
+    def compose_node(self, parent, index):
+        if self.check_event(yaml.events.AliasEvent):
+            raise yaml.constructor.ConstructorError("Aliases are not allowed to prevent YAML bomb (DoS) attacks.")
+        return super().compose_node(parent, index)
+
 def load_yaml_data():
     base_path = os.path.dirname(__file__)
     seq_path = os.path.join(base_path, "sequences.yaml")
@@ -45,7 +51,7 @@ def load_yaml_data():
                 print(f"Error: {seq_path} exceeds 1MB limit.", file=sys.stderr)
                 raise ValueError(f"File {seq_path} exceeds maximum size of 1MB")
             with open(seq_path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f)
+                data = yaml.load(f, Loader=NoAliasSafeLoader)
                 if isinstance(data, dict):
                     val = data.get("isotypes")
                     isotypes = val if (
@@ -63,7 +69,7 @@ def load_yaml_data():
                 print(f"Error: {mut_path} exceeds 1MB limit.", file=sys.stderr)
                 raise ValueError(f"File {mut_path} exceeds maximum size of 1MB")
             with open(mut_path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f)
+                data = yaml.load(f, Loader=NoAliasSafeLoader)
                 if isinstance(data, dict):
                     val = data.get("common_mutations")
                     common_muts = val if (
