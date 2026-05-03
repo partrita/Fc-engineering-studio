@@ -62,3 +62,8 @@
 **Vulnerability:** The application loaded `common_mutations` presets from a YAML file, checking that `value` was a string but omitting the type check for `label`. The UI component `SelectionList` expects a string for the prompt label. Providing a malformed YAML containing list types or integers as labels would crash the application with a `TypeError` and leak stack traces to the terminal.
 **Learning:** All properties loaded from YAML that interact with specific UI expectations (e.g., Textual labels) must be strictly type-checked.
 **Prevention:** Ensured `isinstance(item.get("label"), str)` is verified before returning the parsed presets from `load_yaml_data`.
+
+## 2026-05-02 - [YAML Bomb (Billion Laughs) DoS Vulnerability despite File Size Limits]
+**Vulnerability:** The application used `yaml.safe_load()` combined with a 1MB file size limit to load configurations. However, `yaml.safe_load()` still evaluates YAML aliases and anchors. An attacker could provide a very small YAML file (well under 1MB) containing heavily nested aliases (a "YAML Bomb" or "Billion Laughs" attack) that expand exponentially in memory, causing a Denial of Service (DoS) via memory exhaustion.
+**Learning:** Checking file size is insufficient to prevent memory exhaustion when parsing formats that support data expansion features like aliases. `yaml.safe_load` protects against arbitrary object instantiation but does not block alias expansion by default.
+**Prevention:** Always implement a custom SafeLoader that explicitly raises an error on `yaml.events.AliasEvent` (e.g., overriding `compose_node` and using `self.check_event()`) when loading untrusted YAML, to fully mitigate exponential expansion attacks.
