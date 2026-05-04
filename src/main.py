@@ -55,7 +55,7 @@ def load_yaml_data():
                 if len(content) > MAX_FILE_SIZE:
                     print(f"Error: {seq_path} content exceeds 1MB limit.", file=sys.stderr)
                     raise ValueError(f"File {seq_path} content exceeds maximum size of 1MB")
-                data = yaml.load(content, Loader=NoAliasSafeLoader)
+                data = yaml.load(content, Loader=NoAliasSafeLoader)  # nosec B506
                 if isinstance(data, dict):
                     val = data.get("isotypes")
                     isotypes = val if (
@@ -65,7 +65,7 @@ def load_yaml_data():
                         )
                     ) else {}
     except Exception as e:
-        pass
+        print(f"Error loading {seq_path}: {e}", file=sys.stderr)
 
     try:
         if os.path.isfile(mut_path):
@@ -77,7 +77,7 @@ def load_yaml_data():
                 if len(content) > MAX_FILE_SIZE:
                     print(f"Error: {mut_path} content exceeds 1MB limit.", file=sys.stderr)
                     raise ValueError(f"File {mut_path} content exceeds maximum size of 1MB")
-                data = yaml.load(content, Loader=NoAliasSafeLoader)
+                data = yaml.load(content, Loader=NoAliasSafeLoader)  # nosec B506
                 if isinstance(data, dict):
                     val = data.get("common_mutations")
                     common_muts = val if (
@@ -87,7 +87,7 @@ def load_yaml_data():
                         )
                     ) else []
     except Exception as e:
-        pass
+        print(f"Error loading {mut_path}: {e}", file=sys.stderr)
         
     return isotypes, common_muts
 
