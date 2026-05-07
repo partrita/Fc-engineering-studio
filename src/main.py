@@ -64,6 +64,10 @@ def load_yaml_data():
                             for k, v in val.items()
                         )
                     ) else {}
+                else:
+                    print(f"Error: Parsed data from {seq_path} is not a dictionary.", file=sys.stderr)
+        else:
+            print(f"Error: Missing configuration file {seq_path}.", file=sys.stderr)
     except Exception as e:
         print(f"Error loading {seq_path}: {e}", file=sys.stderr)
 
@@ -86,6 +90,10 @@ def load_yaml_data():
                             for item in val
                         )
                     ) else []
+                else:
+                    print(f"Error: Parsed data from {mut_path} is not a dictionary.", file=sys.stderr)
+        else:
+            print(f"Error: Missing configuration file {mut_path}.", file=sys.stderr)
     except Exception as e:
         print(f"Error loading {mut_path}: {e}", file=sys.stderr)
         
