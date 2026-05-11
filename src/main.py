@@ -490,10 +490,10 @@ class MutantApp(App):
         self.all_mutants = ""
         self.push_screen(WelcomeScreen())
 
-    def clear_clipboard(self) -> None:
+    def clear_clipboard(self, content_to_clear: str) -> None:
         """Security: Clears the clipboard to prevent sensitive data exposure."""
         try:
-            if pyperclip.paste() == getattr(self, "last_fasta", ""):
+            if pyperclip.paste() == content_to_clear:
                 pyperclip.copy("")
                 self.log.info("Clipboard automatically cleared for security.")
         except Exception as e:
