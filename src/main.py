@@ -1,6 +1,7 @@
 import sys
 import os
 import re
+import functools
 from typing import Dict, List, Optional, Tuple, Set
 import yaml
 
@@ -365,7 +366,7 @@ class ResultScreen(Screen):
                 pyperclip.copy(self.app.last_fasta)
                 self.notify("FASTA sequence copied! (Will auto-clear in 30s)")
                 # Security: Auto-clear clipboard after 30 seconds
-                self.app.set_timer(30, self.app.clear_clipboard)
+                self.app.set_timer(30, functools.partial(self.app.clear_clipboard, self.app.last_fasta))
             except Exception as e:
                 self.log.error(f"Error copying to clipboard: {e}", exc_info=True)
                 self.notify("Error copying to clipboard. See logs.", severity="error")
