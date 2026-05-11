@@ -81,3 +81,8 @@
 **Vulnerability:** The application allowed users to copy sensitive proprietary sequences (e.g., antibody sequences) to the OS clipboard, where the data could remain indefinitely. This exposed the data to unauthorized access by other applications or users who later paste the clipboard contents.
 **Learning:** Copying sensitive data to the clipboard introduces a data exposure risk because the clipboard is shared across the operating system and is not isolated to the application.
 **Prevention:** Implement an auto-clear mechanism (e.g., a timeout) to remove sensitive data from the clipboard after a short duration (e.g., 30 seconds), ensuring it matches the previously copied data before clearing to avoid accidentally deleting unrelated user clipboard content.
+
+## 2026-05-10 - [Clipboard Auto-clear Bypass via UI Navigation]
+**Vulnerability:** The application implemented an auto-clear clipboard timer (e.g. `self.set_timer(30, self.clear_clipboard)`) attached to a specific UI screen (`ResultScreen`). If the user navigated away from this screen (causing the screen to be destroyed or popped from the stack) before the timer elapsed, the timer was silently cancelled. This left sensitive proprietary sequences exposed in the OS clipboard indefinitely, bypassing the intended security control.
+**Learning:** Security controls that rely on asynchronous tasks or timers within a UI framework must not be bound to ephemeral UI components (like screens or widgets) whose lifecycles are controlled by user navigation.
+**Prevention:** Always attach background security tasks (like clipboard clearing, auto-logout, or temporary file cleanup) to the persistent root application state (e.g. `App` in Textual) to ensure they complete regardless of UI navigation events.
