@@ -488,6 +488,7 @@ class MutantApp(App):
         self.selected_isotype = ""
         self.selected_allotype = ""
         self.all_mutants = ""
+        self.last_fasta = ""
         self.push_screen(WelcomeScreen())
 
     def clear_clipboard(self, content_to_clear: str) -> None:
