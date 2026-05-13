@@ -492,6 +492,11 @@ class MutantApp(App):
         self.last_fasta = ""
         self.push_screen(WelcomeScreen())
 
+    def on_unmount(self) -> None:
+        """Security: Clear clipboard on application exit if it contains sensitive data."""
+        if hasattr(self, "last_fasta") and self.last_fasta:
+            self.clear_clipboard(self.last_fasta)
+
     def clear_clipboard(self, content_to_clear: str) -> None:
         """Security: Clears the clipboard to prevent sensitive data exposure."""
         try:
