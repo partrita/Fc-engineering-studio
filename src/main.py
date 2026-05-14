@@ -364,9 +364,10 @@ class ResultScreen(Screen):
         if hasattr(self.app, "last_fasta"):
             try:
                 pyperclip.copy(self.app.last_fasta)
+                self.app.copied_fasta = self.app.last_fasta
                 self.notify("FASTA sequence copied! (Will auto-clear in 30s)")
                 # Security: Auto-clear clipboard after 30 seconds
-                self.app.set_timer(30, functools.partial(self.app.clear_clipboard, self.app.last_fasta))
+                self.app.set_timer(30, functools.partial(self.app.clear_clipboard, self.app.copied_fasta))
             except Exception as e:
                 self.log.error(f"Error copying to clipboard: {e}", exc_info=True)
                 self.notify("Error copying to clipboard. See logs.", severity="error")
@@ -490,12 +491,13 @@ class MutantApp(App):
         self.selected_allotype = ""
         self.all_mutants = ""
         self.last_fasta = ""
+        self.copied_fasta = ""
         self.push_screen(WelcomeScreen())
 
     def on_unmount(self) -> None:
         """Security: Clear clipboard on application exit if it contains sensitive data."""
-        if hasattr(self, "last_fasta") and self.last_fasta:
-            self.clear_clipboard(self.last_fasta)
+        if hasattr(self, "copied_fasta") and self.copied_fasta:
+            self.clear_clipboard(self.copied_fasta)
 
     def clear_clipboard(self, content_to_clear: str) -> None:
         """Security: Clears the clipboard to prevent sensitive data exposure."""
