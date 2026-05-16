@@ -61,7 +61,7 @@ def load_yaml_data():
                     val = data.get("isotypes")
                     isotypes = val if (
                         isinstance(val, dict) and all(
-                            isinstance(k, str) and isinstance(v, dict) and all(isinstance(ik, str) for ik in v)
+                            isinstance(k, str) and isinstance(v, dict) and all(isinstance(ik, str) and isinstance(iv, str) for ik, iv in v.items())
                             for k, v in val.items()
                         )
                     ) else {}
