@@ -30,10 +30,22 @@ from rich.markup import escape
 # --- Configuration & Data Loading ---
 
 class NoAliasSafeLoader(yaml.SafeLoader):
+    MAX_DEPTH = 50
+
     def compose_node(self, parent, index):
         if self.check_event(yaml.events.AliasEvent):
             raise yaml.constructor.ConstructorError("Aliases are not allowed to prevent YAML bomb (DoS) attacks.")
-        return super().compose_node(parent, index)
+
+        if not hasattr(self, "depth"):
+            self.depth = 0
+        self.depth += 1
+
+        if self.depth > self.MAX_DEPTH:
+            raise yaml.constructor.ConstructorError("Maximum YAML nesting depth exceeded to prevent DoS attacks.")
+
+        node = super().compose_node(parent, index)
+        self.depth -= 1
+        return node
 
 def load_yaml_data():
     base_path = os.path.dirname(__file__)
