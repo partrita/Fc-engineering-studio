@@ -206,7 +206,7 @@ class IsotypeScreen(Screen):
             yield Label("STEP 1", classes="title")
             yield Label("Select IgG Isotype", classes="subtitle")
             yield OptionList(
-                *[iso.upper() for iso in SEQUENCES.keys()],
+                *[escape(iso.upper()) for iso in SEQUENCES.keys()],
                 id="iso-list"
             )
         yield Footer()
@@ -237,12 +237,12 @@ class AllotypeScreen(Screen):
         yield Header()
         with Vertical(classes="minimal-container"):
             yield Label("STEP 2", classes="title")
-            yield Label(f"Select {self.app.selected_isotype.upper()} Allotype", classes="subtitle")
+            yield Label(f"Select {escape(self.app.selected_isotype.upper())} Allotype", classes="subtitle")
             allotypes = SEQUENCES.get(self.app.selected_isotype, {})
             if not isinstance(allotypes, dict):
                 allotypes = {}
             yield OptionList(
-                *[allo.capitalize() for allo in allotypes.keys()],
+                *[escape(allo.capitalize()) for allo in allotypes.keys()],
                 id="allo-list"
             )
         yield Footer()
@@ -280,7 +280,7 @@ class MutationScreen(Screen):
             yield Label("Presets:", classes="subtitle")
             with Horizontal(id="selection-area"):
                 yield SelectionList[str](
-                    *[Selection(item.get("label", "Unknown"), item.get("value", ""), False) for item in COMMON_MUTATIONS if isinstance(item, dict)],
+                    *[Selection(escape(item.get("label", "Unknown")), item.get("value", ""), False) for item in COMMON_MUTATIONS if isinstance(item, dict)],
                     id="list-common"
                 )
                 yield Pretty([], id="selected-preview")
