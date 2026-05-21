@@ -114,3 +114,13 @@
 **Vulnerability:** The application correctly escaped user-provided sequences before displaying them, but failed to escape internal configuration data (like dictionary keys from YAML) when interpolating them into Rich-enabled Textual UI elements (like `Label`, `OptionList`, and `SelectionList`). If a configuration field contained stray brackets (e.g., `[red]`), it would be evaluated as Rich markup, causing unintended formatting, UI crashes (if the tag was unbalanced), or XSS-like markup injection.
 **Learning:** Defense-in-depth requires that *all* variable data injected into a markup-evaluating context (like Rich in Textual) must be explicitly sanitized/escaped, regardless of whether the data source is considered "trusted" (like an internal config file).
 **Prevention:** Always use `rich.markup.escape()` when interpolating any variable (even internal keys or configuration labels) into Textual widgets or Rich strings that evaluate markup.
+
+## 2026-05-21 - [Path Information Disclosure in Error Logs]
+**Vulnerability:** The application logged and printed the absolute paths of configuration files (`sequences.yaml` and `mutants.yaml`) when encountering errors (e.g., file size limits exceeded, parse errors). This behavior unintentionally exposed the internal backend directory structure in terminal logs.
+**Learning:** Detailed file paths should not be exposed in user-facing error messages or console logs, as they provide potential attackers with information about the underlying system environment.
+**Prevention:** Use `os.path.basename()` to limit file references in logs and error messages strictly to the file name, avoiding the exposure of absolute local system paths.
+
+## 2026-05-21 - [Overlapping Auto-clear Clipboard Timers]
+**Vulnerability:** Successive copying actions generated multiple concurrent auto-clear clipboard timers. This could cause a prematurely-fired timer from a previous copy operation to unexpectedly clear newly copied secure data, compromising the intended user experience of the security feature.
+**Learning:** Overlapping security timeout events can cause race-like conditions that degrade or accidentally activate a security feature earlier than designed.
+**Prevention:** Explicitly track and cancel active timeout controls before initiating a new one for the same component state, preventing overlapping triggers.
