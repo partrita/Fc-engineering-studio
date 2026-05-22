@@ -83,7 +83,8 @@ def load_yaml_data():
         else:
             print(f"Error: Missing configuration file {seq_name}.", file=sys.stderr)
     except Exception as e:
-        print(f"Error loading {seq_name}: {e}", file=sys.stderr)
+        error_msg = str(e).replace(seq_path, seq_name)
+        print(f"Error loading {seq_name}: {error_msg}", file=sys.stderr)
 
     try:
         mut_name = os.path.basename(mut_path)
@@ -110,7 +111,8 @@ def load_yaml_data():
         else:
             print(f"Error: Missing configuration file {mut_name}.", file=sys.stderr)
     except Exception as e:
-        print(f"Error loading {mut_name}: {e}", file=sys.stderr)
+        error_msg = str(e).replace(mut_path, mut_name)
+        print(f"Error loading {mut_name}: {error_msg}", file=sys.stderr)
         
     return isotypes, common_muts
 
