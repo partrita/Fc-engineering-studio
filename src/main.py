@@ -59,15 +59,16 @@ def load_yaml_data():
     MAX_FILE_SIZE = 1 * 1024 * 1024
 
     try:
+        seq_name = os.path.basename(seq_path)
         if os.path.isfile(seq_path):
             if os.path.getsize(seq_path) > MAX_FILE_SIZE:
-                print(f"Error: {seq_path} exceeds 1MB limit.", file=sys.stderr)
-                raise ValueError(f"File {seq_path} exceeds maximum size of 1MB")
+                print(f"Error: {seq_name} exceeds 1MB limit.", file=sys.stderr)
+                raise ValueError(f"File {seq_name} exceeds maximum size of 1MB")
             with open(seq_path, "r", encoding="utf-8") as f:
                 content = f.read(MAX_FILE_SIZE + 1)
                 if len(content) > MAX_FILE_SIZE:
-                    print(f"Error: {seq_path} content exceeds 1MB limit.", file=sys.stderr)
-                    raise ValueError(f"File {seq_path} content exceeds maximum size of 1MB")
+                    print(f"Error: {seq_name} content exceeds 1MB limit.", file=sys.stderr)
+                    raise ValueError(f"File {seq_name} content exceeds maximum size of 1MB")
                 data = yaml.load(content, Loader=NoAliasSafeLoader)  # nosec B506
                 if isinstance(data, dict):
                     val = data.get("isotypes")
@@ -78,22 +79,23 @@ def load_yaml_data():
                         )
                     ) else {}
                 else:
-                    print(f"Error: Parsed data from {seq_path} is not a dictionary.", file=sys.stderr)
+                    print(f"Error: Parsed data from {seq_name} is not a dictionary.", file=sys.stderr)
         else:
-            print(f"Error: Missing configuration file {seq_path}.", file=sys.stderr)
+            print(f"Error: Missing configuration file {seq_name}.", file=sys.stderr)
     except Exception as e:
-        print(f"Error loading {seq_path}: {e}", file=sys.stderr)
+        print(f"Error loading {seq_name}: {e}", file=sys.stderr)
 
     try:
+        mut_name = os.path.basename(mut_path)
         if os.path.isfile(mut_path):
             if os.path.getsize(mut_path) > MAX_FILE_SIZE:
-                print(f"Error: {mut_path} exceeds 1MB limit.", file=sys.stderr)
-                raise ValueError(f"File {mut_path} exceeds maximum size of 1MB")
+                print(f"Error: {mut_name} exceeds 1MB limit.", file=sys.stderr)
+                raise ValueError(f"File {mut_name} exceeds maximum size of 1MB")
             with open(mut_path, "r", encoding="utf-8") as f:
                 content = f.read(MAX_FILE_SIZE + 1)
                 if len(content) > MAX_FILE_SIZE:
-                    print(f"Error: {mut_path} content exceeds 1MB limit.", file=sys.stderr)
-                    raise ValueError(f"File {mut_path} content exceeds maximum size of 1MB")
+                    print(f"Error: {mut_name} content exceeds 1MB limit.", file=sys.stderr)
+                    raise ValueError(f"File {mut_name} content exceeds maximum size of 1MB")
                 data = yaml.load(content, Loader=NoAliasSafeLoader)  # nosec B506
                 if isinstance(data, dict):
                     val = data.get("common_mutations")
@@ -104,11 +106,11 @@ def load_yaml_data():
                         )
                     ) else []
                 else:
-                    print(f"Error: Parsed data from {mut_path} is not a dictionary.", file=sys.stderr)
+                    print(f"Error: Parsed data from {mut_name} is not a dictionary.", file=sys.stderr)
         else:
-            print(f"Error: Missing configuration file {mut_path}.", file=sys.stderr)
+            print(f"Error: Missing configuration file {mut_name}.", file=sys.stderr)
     except Exception as e:
-        print(f"Error loading {mut_path}: {e}", file=sys.stderr)
+        print(f"Error loading {mut_name}: {e}", file=sys.stderr)
         
     return isotypes, common_muts
 
@@ -379,7 +381,10 @@ class ResultScreen(Screen):
                 self.app.copied_fasta = self.app.last_fasta
                 self.notify("FASTA sequence copied! (Will auto-clear in 30s)")
                 # Security: Auto-clear clipboard after 30 seconds
-                self.app.set_timer(30, functools.partial(self.app.clear_clipboard, self.app.copied_fasta))
+                # Ensure overlapping timers are cancelled so the timer doesn't prematurely clear a newly copied item
+                if hasattr(self.app, "_clipboard_timer") and self.app._clipboard_timer is not None:
+                    self.app._clipboard_timer.stop()
+                self.app._clipboard_timer = self.app.set_timer(30, functools.partial(self.app.clear_clipboard, self.app.copied_fasta))
             except Exception as e:
                 self.log.error(f"Error copying to clipboard: {e}", exc_info=True)
                 self.notify("Error copying to clipboard. See logs.", severity="error")
