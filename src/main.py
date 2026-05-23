@@ -111,7 +111,7 @@ def load_yaml_data():
         else:
             print(f"Error: Missing configuration file {mut_name}.", file=sys.stderr)
     except Exception as e:
-        error_msg = str(e).replace(base_path, ".") if base_path else str(e)
+        error_msg = str(e).replace(mut_path, mut_name) if mut_name else str(e)
         print(f"Error loading {mut_name}: {error_msg}", file=sys.stderr)
         
     return isotypes, common_muts
