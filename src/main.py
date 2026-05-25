@@ -372,6 +372,8 @@ class ResultScreen(Screen):
             # SECURITY: Escape user-provided sequence/header data to prevent Rich markup injection
             result_box.write(escape(fasta))
             self.app.last_fasta = fasta
+            # SECURITY: Audit log for sensitive intellectual property operation (Sequence Generation)
+            self.log.info(f"Audit: Generated FASTA sequence for {isotype} {allotype} with mutations {display_muts}")
         except Exception as e:
             result_box.write("[bold red]An unexpected error occurred during sequence generation.[/]")
             self.log.error(f"Error in generate_fasta: {e}", exc_info=True)
@@ -381,6 +383,8 @@ class ResultScreen(Screen):
             try:
                 pyperclip.copy(self.app.last_fasta)
                 self.app.copied_fasta = self.app.last_fasta
+                # SECURITY: Audit log for sensitive intellectual property operation (Data Export to OS)
+                self.log.info("Audit: Copied proprietary FASTA sequence to OS clipboard.")
                 self.notify("FASTA sequence copied! (Will auto-clear in 30s)")
                 # Security: Auto-clear clipboard after 30 seconds
                 # Ensure overlapping timers are cancelled so the timer doesn't prematurely clear a newly copied item
