@@ -124,3 +124,8 @@
 **Vulnerability:** Successive copying actions generated multiple concurrent auto-clear clipboard timers. This could cause a prematurely-fired timer from a previous copy operation to unexpectedly clear newly copied secure data, compromising the intended user experience of the security feature.
 **Learning:** Overlapping security timeout events can cause race-like conditions that degrade or accidentally activate a security feature earlier than designed.
 **Prevention:** Explicitly track and cancel active timeout controls before initiating a new one for the same component state, preventing overlapping triggers.
+
+## 2026-05-26 - [Stale Application State Data Leakage]
+**Vulnerability:** The application failed to clear the previously generated sensitive sequence (`self.app.last_fasta`) at the beginning of a new generation attempt. If a subsequent sequence generation failed, the application state retained the older sequence. A user pressing the "Copy" hotkey would then unknowingly copy the previous, potentially unrelated proprietary sequence to the OS clipboard, causing unintended data exposure or contamination.
+**Learning:** Application state variables holding sensitive information must be explicitly cleared or reset at the absolute beginning of any lifecycle event or function that intends to mutate or replace them. Relying on successful completion to overwrite the state leaves the application vulnerable if the process fails prematurely.
+**Prevention:** Immediately reset sensitive state variables (e.g., `self.app.last_fasta = ""`) upon entering the function responsible for generating new data, and explicitly verify the variable is truthy (`if self.app.last_fasta:`) before exporting it to external systems like the OS clipboard.
