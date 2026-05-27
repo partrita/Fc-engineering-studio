@@ -340,6 +340,8 @@ class ResultScreen(Screen):
         self.generate_fasta()
 
     def generate_fasta(self) -> None:
+        self.app.last_fasta = ""  # SECURITY: Clear previous state to prevent stale data leakage
+
         isotype = self.app.selected_isotype
         allotype = self.app.selected_allotype
         all_mutants = self.app.all_mutants
@@ -381,7 +383,7 @@ class ResultScreen(Screen):
             self.log.error(f"Error in generate_fasta: {e}", exc_info=True)
 
     def action_copy_to_clipboard(self) -> None:
-        if hasattr(self.app, "last_fasta"):
+        if hasattr(self.app, "last_fasta") and self.app.last_fasta:
             try:
                 pyperclip.copy(self.app.last_fasta)
                 self.app.copied_fasta = self.app.last_fasta
