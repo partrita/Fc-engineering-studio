@@ -402,6 +402,11 @@ class ResultScreen(Screen):
                 self.notify("Error copying to clipboard. See logs.", severity="error")
 
     def action_quit_to_main(self) -> None:
+        # SECURITY: Wipe sensitive state upon returning to main menu
+        self.app.selected_isotype = ""
+        self.app.selected_allotype = ""
+        self.app.all_mutants = ""
+        self.app.last_fasta = ""
         while len(self.app.screen_stack) > 1:
             self.app.pop_screen()
 
@@ -534,6 +539,8 @@ class MutantApp(App):
             if pyperclip.paste() == content_to_clear:
                 pyperclip.copy("")
                 self.log.info("Clipboard automatically cleared for security.")
+                if hasattr(self, "copied_fasta"):
+                    self.copied_fasta = ""
         except Exception as e:
             self.log.error(f"Error clearing clipboard: {e}", exc_info=True)
 
