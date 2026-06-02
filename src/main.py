@@ -236,6 +236,7 @@ class IsotypeScreen(Screen):
             self.notify("An error occurred. Please check configuration.", severity="error")
 
     def action_back(self) -> None:
+        self.app.selected_isotype = ""
         self.app.pop_screen()
 
 class AllotypeScreen(Screen):
@@ -275,6 +276,7 @@ class AllotypeScreen(Screen):
             self.notify("An error occurred. Please check configuration.", severity="error")
 
     def action_back(self) -> None:
+        self.app.selected_allotype = ""
         self.app.pop_screen()
 
 class MutationScreen(Screen):
@@ -320,6 +322,7 @@ class MutationScreen(Screen):
         if event.button.id == "btn-gen": self.action_generate()
 
     def action_back(self) -> None:
+        self.app.all_mutants = ""
         self.app.pop_screen()
 
 class ResultScreen(Screen):
@@ -411,6 +414,7 @@ class ResultScreen(Screen):
             self.app.pop_screen()
 
     def action_back(self) -> None:
+        self.app.last_fasta = ""
         self.app.pop_screen()
 
 # --- Main App ---
