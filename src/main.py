@@ -388,6 +388,7 @@ class ResultScreen(Screen):
             self.log.error(f"Error in generate_fasta: {e}", exc_info=True)
 
     def action_copy_to_clipboard(self) -> None:
+        self.app.copied_fasta = ""  # SECURITY: Clear state before copying
         if hasattr(self.app, "last_fasta") and self.app.last_fasta:
             try:
                 pyperclip.copy(self.app.last_fasta)
@@ -540,12 +541,12 @@ class MutantApp(App):
 
     def clear_clipboard(self, content_to_clear: str) -> None:
         """Security: Clears the clipboard to prevent sensitive data exposure."""
+        if hasattr(self, "copied_fasta"):
+            self.copied_fasta = ""
         try:
             if pyperclip.paste() == content_to_clear:
                 pyperclip.copy("")
                 self.log.info("Clipboard automatically cleared for security.")
-            if hasattr(self, "copied_fasta"):
-                self.copied_fasta = ""
         except Exception as e:
             self.log.error(f"Error clearing clipboard: {e}", exc_info=True)
 
