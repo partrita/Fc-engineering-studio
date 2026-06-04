@@ -407,6 +407,8 @@ class ResultScreen(Screen):
 
     def action_quit_to_main(self) -> None:
         # SECURITY: Wipe sensitive state upon returning to main menu
+        if hasattr(self.app, "copied_fasta") and self.app.copied_fasta:
+            self.app.clear_clipboard(self.app.copied_fasta)
         self.app.selected_isotype = ""
         self.app.selected_allotype = ""
         self.app.all_mutants = ""
@@ -416,7 +418,11 @@ class ResultScreen(Screen):
             self.app.pop_screen()
 
     def action_back(self) -> None:
+        # SECURITY: Wipe external state on backward navigation
+        if hasattr(self.app, "copied_fasta") and self.app.copied_fasta:
+            self.app.clear_clipboard(self.app.copied_fasta)
         self.app.last_fasta = ""
+        self.app.copied_fasta = ""
         self.app.pop_screen()
 
 # --- Main App ---
