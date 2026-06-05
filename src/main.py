@@ -223,6 +223,7 @@ class IsotypeScreen(Screen):
         self.action_next()
 
     def action_next(self) -> None:
+        self.app.selected_isotype = ""
         try:
             iso_list = self.query_one("#iso-list", OptionList)
             if iso_list.highlighted is None:
@@ -260,6 +261,7 @@ class AllotypeScreen(Screen):
         self.action_next()
 
     def action_next(self) -> None:
+        self.app.selected_allotype = ""
         try:
             allo_list = self.query_one("#allo-list", OptionList)
             if allo_list.highlighted is None:
@@ -308,6 +310,7 @@ class MutationScreen(Screen):
         self.query_one("#selected-preview", Pretty).update(self.query_one("#list-common", SelectionList).selected)
 
     def action_generate(self) -> None:
+        self.app.all_mutants = ""
         try:
             selected_presets = self.query_one("#list-common", SelectionList).selected
             preset_str = "/".join(selected_presets)
@@ -388,6 +391,8 @@ class ResultScreen(Screen):
             self.log.error(f"Error in generate_fasta: {e}", exc_info=True)
 
     def action_copy_to_clipboard(self) -> None:
+        if hasattr(self.app, "copied_fasta") and self.app.copied_fasta:
+            self.app.clear_clipboard(self.app.copied_fasta)
         self.app.copied_fasta = ""  # SECURITY: Clear state before copying
         if hasattr(self.app, "last_fasta") and self.app.last_fasta:
             try:
