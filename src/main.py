@@ -409,6 +409,9 @@ class ResultScreen(Screen):
         # SECURITY: Wipe sensitive state upon returning to main menu
         if hasattr(self.app, "copied_fasta") and self.app.copied_fasta:
             self.app.clear_clipboard(self.app.copied_fasta)
+        if hasattr(self.app, "_clipboard_timer") and self.app._clipboard_timer is not None:
+            self.app._clipboard_timer.stop()
+            self.app._clipboard_timer = None
         self.app.selected_isotype = ""
         self.app.selected_allotype = ""
         self.app.all_mutants = ""
