@@ -148,3 +148,8 @@
 **Vulnerability:** The application conditionally cleared sensitive in-memory variables (like `self.copied_fasta`) only if the external state wipe (the OS clipboard) succeeded. This tied internal application state teardown to external success, risking state leakage.
 **Learning:** Application state variables holding sensitive information must be explicitly cleared or reset at the absolute beginning of any lifecycle event or function that intends to mutate or replace them.
 **Prevention:** Unconditionally reset sensitive state at the start of functions (like `clear_clipboard` and `action_copy_to_clipboard`) before evaluating any conditional logic or trying external operations.
+
+## 2026-06-04 - [Stale External Data Leakage on Backward Navigation]
+**Vulnerability:** The application securely wiped sensitive application state variables on backward navigation in the wizard UI, but failed to immediately clear external system state like the OS clipboard. If a user navigated backward from the result screen or returned to the main menu without the auto-clear timer finishing, the copied data would remain in the clipboard indefinitely (if the timer was cancelled or lost context), exposing sensitive intellectual property.
+**Learning:** Backward navigation from sensitive screens must explicitly and immediately trigger the teardown of external system state (like the OS clipboard) and its associated internal tracking variables to prevent external data leakage.
+**Prevention:** In backward navigation handlers (`action_back`, `action_quit_to_main`), invoke explicit external state teardown methods (e.g., `clear_clipboard`) and explicitly set related tracking variables (e.g., `copied_fasta`) to empty before popping the screen.
