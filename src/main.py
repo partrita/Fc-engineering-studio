@@ -424,6 +424,9 @@ class ResultScreen(Screen):
         # SECURITY: Wipe external state on backward navigation
         if hasattr(self.app, "copied_fasta") and self.app.copied_fasta:
             self.app.clear_clipboard(self.app.copied_fasta)
+        if hasattr(self.app, "_clipboard_timer") and self.app._clipboard_timer is not None:
+            self.app._clipboard_timer.stop()
+            self.app._clipboard_timer = None
         self.app.last_fasta = ""
         self.app.copied_fasta = ""
         self.app.pop_screen()
