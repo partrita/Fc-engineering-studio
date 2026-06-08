@@ -169,7 +169,7 @@ def apply_mutations(sequence: str, mutants_str: str, isotype: str) -> Tuple[str,
             if index < 0 or index >= len(seq_list): errors.append(f"Position {pos} is out of range."); continue
             if seq_list[index] != wt_aa: errors.append(f"Pos {pos}: Expected '{wt_aa}', found '{seq_list[index]}'."); continue
             seq_list[index] = mut_aa
-        except Exception: errors.append(f"Format error: Invalid mutation '{m}'.")
+        except ValueError: errors.append(f"Format error: Invalid mutation '{m}'.")
     return "".join(seq_list), errors
 
 ANTIBODY_ASCII = r"""
