@@ -58,7 +58,7 @@ def test_apply_mutations_errors():
 
     # 5. Mutation string too long
     _, errors = apply_mutations(seq, "A118X" * 3, "igg1")
-    assert any("too long" in e for e in errors)
+    assert any("Invalid mutation" in e for e in errors)
 
 def test_apply_mutations_length_limit():
     seq = "ASTKGPSVFPLAPSSK"
