@@ -163,3 +163,8 @@
 **Vulnerability:** The application caught exceptions during mutation parsing (e.g., in `apply_mutations`) and appended the raw exception string (`str(e)`) to the list of errors shown to the user. This leaked internal exception structures and details to the user interface.
 **Learning:** Raw exception messages should never be exposed in user-facing elements, as they can leak information about the application's internal workings and implementation details.
 **Prevention:** Catch specific exceptions and return generic, safe error messages to the user (e.g., "Invalid mutation format") instead of embedding `str(e)` in user-facing error arrays.
+
+## 2026-06-09 - [Teardown Sequence Vulnerability]
+**Vulnerability:** The application attempted to clear the external OS clipboard but failed to clear the internal tracking variable `self.copied_fasta` if an exception occurred during the external clipboard interaction. This left the application in a compromised state where internal memory retained sensitive data that the external system failed to clear.
+**Learning:** When tearing down sensitive state, if the external state wipe relies on an internal tracking variable, the external wipe must be attempted first inside a `try` block, and the internal variable must be unconditionally wiped afterward in a `finally` block. This prevents edge cases where external failures bypass internal memory scrubbing.
+**Prevention:** Always structure security teardown logic that depends on both external and internal state with `try...finally` blocks, ensuring that internal tracking variables are unconditionally cleared even if the external system interaction fails.
