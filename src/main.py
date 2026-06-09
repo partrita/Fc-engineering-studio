@@ -315,6 +315,11 @@ class MutationScreen(Screen):
             selected_presets = self.query_one("#list-common", SelectionList).selected
             preset_str = "/".join(selected_presets)
             custom_str = self.query_one("#input-custom", Input).value
+
+            # Security Enhancement: Strictly sanitize custom input to remove any invalid characters
+            # acting as a secondary defense layer behind the Input widget's restrict regex.
+            custom_str = re.sub(r'[^a-zA-Z0-9/, ]', '', custom_str)
+
             self.app.all_mutants = "/".join(filter(None, [preset_str, custom_str]))
             self.app.push_screen(ResultScreen())
         except Exception as e:
@@ -558,14 +563,15 @@ class MutantApp(App):
 
     def clear_clipboard(self, content_to_clear: str) -> None:
         """Security: Clears the clipboard to prevent sensitive data exposure."""
-        if hasattr(self, "copied_fasta"):
-            self.copied_fasta = ""
         try:
             if pyperclip.paste() == content_to_clear:
                 pyperclip.copy("")
                 self.log.info("Clipboard automatically cleared for security.")
         except Exception as e:
             self.log.error(f"Error clearing clipboard: {e}", exc_info=True)
+        finally:
+            if hasattr(self, "copied_fasta"):
+                self.copied_fasta = ""
 
 
 def main():
