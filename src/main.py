@@ -417,29 +417,33 @@ class ResultScreen(Screen):
 
     def action_quit_to_main(self) -> None:
         # SECURITY: Wipe sensitive state upon returning to main menu
-        if hasattr(self.app, "copied_fasta") and self.app.copied_fasta:
-            self.app.clear_clipboard(self.app.copied_fasta)
-        if hasattr(self.app, "_clipboard_timer") and self.app._clipboard_timer is not None:
-            self.app._clipboard_timer.stop()
-            self.app._clipboard_timer = None
-        self.app.selected_isotype = ""
-        self.app.selected_allotype = ""
-        self.app.all_mutants = ""
-        self.app.last_fasta = ""
-        self.app.copied_fasta = ""
-        while len(self.app.screen_stack) > 1:
-            self.app.pop_screen()
+        try:
+            if hasattr(self.app, "_clipboard_timer") and self.app._clipboard_timer is not None:
+                self.app._clipboard_timer.stop()
+                self.app._clipboard_timer = None
+            if hasattr(self.app, "copied_fasta") and self.app.copied_fasta:
+                self.app.clear_clipboard(self.app.copied_fasta)
+        finally:
+            self.app.selected_isotype = ""
+            self.app.selected_allotype = ""
+            self.app.all_mutants = ""
+            self.app.last_fasta = ""
+            self.app.copied_fasta = ""
+            while len(self.app.screen_stack) > 1:
+                self.app.pop_screen()
 
     def action_back(self) -> None:
         # SECURITY: Wipe external state on backward navigation
-        if hasattr(self.app, "copied_fasta") and self.app.copied_fasta:
-            self.app.clear_clipboard(self.app.copied_fasta)
-        if hasattr(self.app, "_clipboard_timer") and self.app._clipboard_timer is not None:
-            self.app._clipboard_timer.stop()
-            self.app._clipboard_timer = None
-        self.app.last_fasta = ""
-        self.app.copied_fasta = ""
-        self.app.pop_screen()
+        try:
+            if hasattr(self.app, "_clipboard_timer") and self.app._clipboard_timer is not None:
+                self.app._clipboard_timer.stop()
+                self.app._clipboard_timer = None
+            if hasattr(self.app, "copied_fasta") and self.app.copied_fasta:
+                self.app.clear_clipboard(self.app.copied_fasta)
+        finally:
+            self.app.last_fasta = ""
+            self.app.copied_fasta = ""
+            self.app.pop_screen()
 
 # --- Main App ---
 
@@ -558,8 +562,15 @@ class MutantApp(App):
 
     def on_unmount(self) -> None:
         """Security: Clear clipboard on application exit if it contains sensitive data."""
-        if hasattr(self, "copied_fasta") and self.copied_fasta:
-            self.clear_clipboard(self.copied_fasta)
+        try:
+            if hasattr(self, "_clipboard_timer") and self._clipboard_timer is not None:
+                self._clipboard_timer.stop()
+                self._clipboard_timer = None
+            if hasattr(self, "copied_fasta") and self.copied_fasta:
+                self.clear_clipboard(self.copied_fasta)
+        finally:
+            if hasattr(self, "copied_fasta"):
+                self.copied_fasta = ""
 
     def clear_clipboard(self, content_to_clear: str) -> None:
         """Security: Clears the clipboard to prevent sensitive data exposure."""
