@@ -153,8 +153,9 @@ def apply_mutations(sequence: str, mutants_str: str, isotype: str) -> Tuple[str,
     if len(mutants_str) > 1000:
         return sequence, ["Error: Mutation string exceeds maximum length of 1000 characters."]
 
-    # SECURITY: Defense-in-depth sanitization on the backend logic layer
-    mutants_str = re.sub(r'[^a-zA-Z0-9/, ]', '', mutants_str)
+    # SECURITY: Defense-in-depth validation on the backend logic layer
+    if re.search(r'[^a-zA-Z0-9/, ]', mutants_str):
+        return sequence, ["Error: Mutation string contains invalid characters."]
 
     mut_list = [m.strip() for m in mutants_str.replace(',', '/').split('/') if m.strip()]
 
