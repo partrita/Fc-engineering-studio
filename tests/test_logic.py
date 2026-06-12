@@ -48,7 +48,7 @@ def test_apply_mutations_errors():
     assert any("out of range" in e for e in errors)
     
     # 3. Gap 부위에 변이 시도 (IgG2의 223번)
-    _, errors = apply_mutations("ANY_SEQ", "S223P", "igg2")
+    _, errors = apply_mutations("ANYSEQ", "S223P", "igg2")
     assert any("Gap" in e for e in errors)
 
     # 4. Too many mutations limit

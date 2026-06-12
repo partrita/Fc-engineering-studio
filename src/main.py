@@ -147,6 +147,10 @@ def parse_mutation(m_str: str) -> Tuple[str, int, str]:
     return wt_aa, pos, mut_aa
 
 def apply_mutations(sequence: str, mutants_str: str, isotype: str) -> Tuple[str, List[str]]:
+    # SECURITY: Defense-in-depth validation to ensure base sequence contains only valid amino acid characters
+    if sequence and not re.fullmatch(r"[A-Z]+", sequence):
+        return sequence, ["Error: Base sequence contains invalid characters."]
+
     if not mutants_str: return sequence, []
 
     # SECURITY: Enforce strict length limits on input string to prevent DoS (memory/CPU exhaustion)
