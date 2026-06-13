@@ -48,7 +48,7 @@ def test_apply_mutations_errors():
     assert any("out of range" in e for e in errors)
     
     # 3. Gap 부위에 변이 시도 (IgG2의 223번)
-    _, errors = apply_mutations("ANY_SEQ", "S223P", "igg2")
+    _, errors = apply_mutations("ANYSEQ", "S223P", "igg2")
     assert any("Gap" in e for e in errors)
 
     # 4. Too many mutations limit
@@ -65,3 +65,13 @@ def test_apply_mutations_length_limit():
     long_input = "A118X/" * 200  # length > 1000
     _, errors = apply_mutations(seq, long_input, "igg1")
     assert "Error: Mutation string exceeds maximum length of 1000 characters." in errors[0]
+
+def test_apply_mutations_invalid_base_seq():
+    seq = "ASTKGPSVFPLAPSSK123"
+    _, errors = apply_mutations(seq, "A118X", "igg1")
+    assert "Error: Base sequence contains invalid characters." in errors[0]
+
+def test_apply_mutations_invalid_base_seq_no_muts():
+    seq = "ASTKGPSVFPLAPSSK123"
+    _, errors = apply_mutations(seq, "", "igg1")
+    assert "Error: Base sequence contains invalid characters." in errors[0]
