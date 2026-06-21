@@ -2,6 +2,7 @@ import sys
 import os
 import re
 import functools
+import logging
 from typing import Dict, List, Optional, Tuple, Set
 import yaml
 
@@ -48,6 +49,7 @@ class NoAliasSafeLoader(yaml.SafeLoader):
         return node
 
 def load_yaml_data():
+    logger = logging.getLogger(__name__)
     base_path = os.path.dirname(__file__)
     seq_path = os.path.join(base_path, "sequences.yaml")
     mut_path = os.path.join(base_path, "mutants.yaml")
@@ -84,6 +86,10 @@ def load_yaml_data():
             print(f"Error: Missing configuration file {seq_name}.", file=sys.stderr)
     except Exception as e:
         print(f"Error loading {seq_name}: An unexpected error occurred.", file=sys.stderr)
+        err_msg = str(e)
+        if base_path:
+            err_msg = err_msg.replace(base_path, '.')
+        logger.error(f"Error loading {seq_name}: {err_msg}", exc_info=True)
 
     try:
         mut_name = os.path.basename(mut_path)
@@ -111,6 +117,10 @@ def load_yaml_data():
             print(f"Error: Missing configuration file {mut_name}.", file=sys.stderr)
     except Exception as e:
         print(f"Error loading {mut_name}: An unexpected error occurred.", file=sys.stderr)
+        err_msg = str(e)
+        if base_path:
+            err_msg = err_msg.replace(base_path, '.')
+        logger.error(f"Error loading {mut_name}: {err_msg}", exc_info=True)
         
     return isotypes, common_muts
 
