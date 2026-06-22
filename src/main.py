@@ -2,6 +2,8 @@ import sys
 import os
 import re
 import functools
+import logging
+import traceback
 from typing import Dict, List, Optional, Tuple, Set
 import yaml
 
@@ -26,6 +28,9 @@ from textual.binding import Binding
 from textual.screen import Screen
 import pyperclip
 from rich.markup import escape
+
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 # --- Configuration & Data Loading ---
 
@@ -83,6 +88,9 @@ def load_yaml_data():
         else:
             print(f"Error: Missing configuration file {seq_name}.", file=sys.stderr)
     except Exception as e:
+        safe_err = str(e).replace(base_path, '.') if base_path else str(e)
+        safe_traceback = traceback.format_exc().replace(base_path, '.') if base_path else traceback.format_exc()
+        logger.error(f"Error loading {seq_name}: {safe_err}\n{safe_traceback}")
         print(f"Error loading {seq_name}: An unexpected error occurred.", file=sys.stderr)
 
     try:
@@ -110,6 +118,9 @@ def load_yaml_data():
         else:
             print(f"Error: Missing configuration file {mut_name}.", file=sys.stderr)
     except Exception as e:
+        safe_err = str(e).replace(base_path, '.') if base_path else str(e)
+        safe_traceback = traceback.format_exc().replace(base_path, '.') if base_path else traceback.format_exc()
+        logger.error(f"Error loading {mut_name}: {safe_err}\n{safe_traceback}")
         print(f"Error loading {mut_name}: An unexpected error occurred.", file=sys.stderr)
         
     return isotypes, common_muts
