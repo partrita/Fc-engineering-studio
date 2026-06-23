@@ -32,6 +32,13 @@ from rich.markup import escape
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
+
+def log_sanitized_error(logger_obj, msg: str, e: Exception):
+    base_path = os.path.dirname(__file__)
+    safe_err = str(e).replace(base_path, '.') if base_path else str(e)
+    safe_traceback = traceback.format_exc().replace(base_path, '.') if base_path else traceback.format_exc()
+    logger_obj.error(f"{msg}: {safe_err}\n{safe_traceback}")
+
 # --- Configuration & Data Loading ---
 
 class NoAliasSafeLoader(yaml.SafeLoader):
@@ -246,7 +253,7 @@ class IsotypeScreen(Screen):
             self.app.selected_isotype = selected_iso
             self.app.push_screen(AllotypeScreen())
         except Exception as e:
-            self.log.error(f"Error in IsotypeScreen.action_next: {e}", exc_info=True)
+            log_sanitized_error(self.log, f"Error in IsotypeScreen.action_next", e)
             self.notify("An error occurred. Please check configuration.", severity="error")
 
     def action_back(self) -> None:
@@ -287,7 +294,7 @@ class AllotypeScreen(Screen):
             self.app.selected_allotype = selected_allo
             self.app.push_screen(MutationScreen())
         except Exception as e:
-            self.log.error(f"Error in AllotypeScreen.action_next: {e}", exc_info=True)
+            log_sanitized_error(self.log, f"Error in AllotypeScreen.action_next", e)
             self.notify("An error occurred. Please check configuration.", severity="error")
 
     def action_back(self) -> None:
@@ -336,7 +343,7 @@ class MutationScreen(Screen):
             self.app.all_mutants = "/".join(filter(None, [preset_str, custom_str]))
             self.app.push_screen(ResultScreen())
         except Exception as e:
-            self.log.error(f"Error in MutationScreen.action_generate: {e}", exc_info=True)
+            log_sanitized_error(self.log, f"Error in MutationScreen.action_generate", e)
             self.notify("An error occurred. Please check your inputs.", severity="error")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -406,7 +413,7 @@ class ResultScreen(Screen):
             self.log.info(f"Audit: Generated FASTA sequence for {isotype} {allotype} with mutations {display_muts}")
         except Exception as e:
             result_box.write("[bold red]An unexpected error occurred during sequence generation.[/]")
-            self.log.error(f"Error in generate_fasta: {e}", exc_info=True)
+            log_sanitized_error(self.log, f"Error in generate_fasta", e)
 
     def action_copy_to_clipboard(self) -> None:
         if hasattr(self.app, "copied_fasta") and self.app.copied_fasta:
@@ -425,7 +432,7 @@ class ResultScreen(Screen):
                     self.app._clipboard_timer.stop()
                 self.app._clipboard_timer = self.app.set_timer(30, functools.partial(self.app.clear_clipboard, self.app.copied_fasta))
             except Exception as e:
-                self.log.error(f"Error copying to clipboard: {e}", exc_info=True)
+                log_sanitized_error(self.log, f"Error copying to clipboard", e)
                 self.notify("Error copying to clipboard. See logs.", severity="error")
 
     def action_quit_to_main(self) -> None:
@@ -592,7 +599,7 @@ class MutantApp(App):
                 pyperclip.copy("")
                 self.log.info("Clipboard automatically cleared for security.")
         except Exception as e:
-            self.log.error(f"Error clearing clipboard: {e}", exc_info=True)
+            log_sanitized_error(self.log, f"Error clearing clipboard", e)
         finally:
             if hasattr(self, "copied_fasta"):
                 self.copied_fasta = ""
