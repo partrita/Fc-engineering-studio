@@ -1,6 +1,19 @@
 import pytest
 from fc_engineer.core import get_residue_index, parse_mutation, apply_mutations
-from fc_engineer.config import SEQUENCES
+from fc_engineer.config import SEQUENCES, COMMON_MUTATIONS
+
+# 로드맵: developability / PTM 관련 신규 프리셋
+DEVELOPABILITY_PRESETS = [
+    "N434A",
+    "T250Q/M428L",
+    "D265A",
+    "K322A",
+    "E318A",
+    "G236R",
+    "S267E",
+    "H310A/H435A",
+    "P329G/L234A/L235A",
+]
 
 def test_get_residue_index_igg1():
     # IgG1은 EU 118부터 연속적임
@@ -35,6 +48,22 @@ def test_apply_mutations_igg3():
     idx = get_residue_index(297, "igg3")
     assert seq[idx] == "N"
     assert result[idx] == "A"
+
+@pytest.mark.parametrize("value", DEVELOPABILITY_PRESETS)
+def test_developability_presets_apply_cleanly(value):
+    # developability 프리셋은 IgG1 WT에 오류 없이 적용되어야 함
+    seq = SEQUENCES["igg1"]["WT(P01857-1)"]
+    result, errors = apply_mutations(seq, value, "igg1")
+    assert not errors
+    assert result != seq  # 실제 변이가 반영됨
+
+def test_all_preset_values_are_parseable():
+    # mutants.yaml의 모든 value는 유효한 변이 문법(들)이어야 함 (데이터 무결성)
+    for item in COMMON_MUTATIONS:
+        for m in item["value"].split("/"):
+            wt_aa, pos, mut_aa = parse_mutation(m)  # ValueError 발생 시 실패
+            assert wt_aa in "ACDEFGHIKLMNPQRSTVWY"
+            assert mut_aa in "ACDEFGHIKLMNPQRSTVWY"
 
 def test_parse_mutation():
     assert parse_mutation("S228P") == ("S", 228, "P")
