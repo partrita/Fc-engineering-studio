@@ -1,5 +1,5 @@
 import pytest
-from main import MutantApp
+from fc_engineer.app import MutantApp
 
 @pytest.mark.asyncio
 async def test_app_compose():

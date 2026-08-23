@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "fc-engineering-studio"
 version = "0.1.0"
-description = "Add your description here"
+description = "Design and analyze human IgG Fc variant sequences based on EU Numbering - a Textual TUI for antibody Fc engineering"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -15,14 +15,13 @@ dependencies = [
 ]
 
 [project.scripts]
-fc-engineer = "main:main"
+fc-engineer = "fc_engineer.app:main"
 
-[tool.setuptools]
-package-dir = {"" = "src"}
-py-modules = ["main"]
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.setuptools.package-data]
-"*" = ["*.yaml"]
+fc_engineer = ["data/*.yaml"]
 
 [dependency-groups]
 dev = [

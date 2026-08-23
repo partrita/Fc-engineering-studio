@@ -47,11 +47,20 @@ uv run pytest
 
 ## 프로젝트 구조
 
-- `src/main.py`: TUI 및 핵심 로직 구현
-- `src/sequences.yaml`: Isotype별 베이스 서열 데이터
-- `src/mutants.yaml`: 주요 변이 프리셋 데이터
-- `pyproject.toml`: 프로젝트 설정 및 의존성 정의
+```
+src/fc_engineer/
+├── __init__.py          # 패키지 메타데이터
+├── __main__.py          # python -m fc_engineer 진입점
+├── app.py               # TUI 화면 및 MutantApp
+├── core.py              # EU Numbering 계산, 변이 파싱/적용 로직
+├── config.py            # YAML 데이터 로딩 및 검증
+└── data/
+    ├── sequences.yaml   # Isotype별 베이스 서열 데이터
+    └── mutants.yaml     # 주요 변이 프리셋 데이터
+tests/                   # 단위 테스트
+pyproject.toml           # 프로젝트 설정 및 의존성 정의
+```
 
 ## 데이터 커스터마이징
 
-새로운 베이스 서열이나 변이 프리셋을 추가하려면 `src/sequences.yaml` 또는 `src/mutants.yaml` 파일을 수정하십시오. 프로그램 실행 시 해당 파일들을 자동으로 로드합니다.
+새로운 베이스 서열이나 변이 프리셋을 추가하려면 `src/fc_engineer/data/sequences.yaml` 또는 `src/fc_engineer/data/mutants.yaml` 파일을 수정하십시오. 프로그램 실행 시 해당 파일들을 자동으로 로드합니다.

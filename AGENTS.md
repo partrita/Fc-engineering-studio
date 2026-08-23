@@ -1,200 +1,252 @@
-## 2023-10-24 - [Rich Markup Injection in Textual/Rich Log Widget]
+# Fc Engineering Studio - Project Context
+
+## Project Overview
+Fc Engineering Studio는 인간 IgG Fc(Hinge-CH2-CH3) 영역의 변이 서열을 설계하고 분석하는 Python 기반 TUI(Text User Interface) 애플리케이션입니다. **EU Numbering** 체계를 기준으로 단백질 서열의 특정 잔기(Residue) 위치를 계산하고, 변이(Mutation)를 적용하여 FASTA 형식의 최종 서열을 생성합니다.
+
+### 핵심 기술 스택
+- **Language**: Python >= 3.14
+- **TUI Framework**: [Textual](https://textual.textualize.io/) (Rich 기반의 터미널 인터페이스)
+- **Dependency Management**: [uv](https://github.com/astral-sh/uv)
+- **Data Persistence**: YAML (`pyyaml`)
+- **Clipboard Management**: `pyperclip`
+- **Testing**: `pytest`
+
+### 아키텍처 (src-layout 패키지)
+- `src/fc_engineer/app.py`: 애플리케이션의 TUI 클래스(`MutantApp`)와 각 Screen을 포함합니다.
+- `src/fc_engineer/core.py`: EU Numbering 인덱스 계산(`get_residue_index`)과 변이 파싱/적용(`parse_mutation`, `apply_mutations`) 순수 로직을 포함합니다.
+- `src/fc_engineer/config.py`: YAML 데이터 로딩(`load_yaml_data`)과 보안 검증(NoAliasSafeLoader, 파일 크기 제한)을 담당합니다.
+- `src/fc_engineer/__main__.py`: `python -m fc_engineer` 실행을 지원합니다.
+- `src/fc_engineer/data/sequences.yaml`: 각 IgG Isotype(IgG1, IgG2, IgG4) 및 Allotype(WT, Trastuzumab 등)별 기준 서열 데이터를 관리합니다.
+- `src/fc_engineer/data/mutants.yaml`: LALA, YTE, LS, Knob-into-Hole 등 업계에서 널리 사용되는 주요 변이 프리셋을 정의합니다.
+- `tests/`: 변이 적용 로직 및 번호 체계 계산 로직에 대한 단위 테스트를 포함합니다.
+
+## Building and Running
+
+### 실행 명령어
+```bash
+# 애플리케이션 실행
+uv run fc-engineer
+
+# 또는 모듈로 직접 실행
+uv run python -m fc_engineer
+```
+
+### 개발 및 테스트
+```bash
+# 의존성 동기화
+uv sync
+
+# 테스트 실행
+uv run pytest
+```
+
+## Development Conventions
+
+### Coding Style
+- **Python Typing**: `typing` 모듈을 사용하여 적극적으로 타입을 명시합니다 (`Dict`, `List`, `Optional`, `Tuple` 등).
+- **Docstrings**: 클래스 및 주요 함수에 대한 설명을 포함하여 코드 가독성을 유지합니다.
+- **Entry Points**: `[project.scripts]`를 통해 터미널 명령어를 제공하며, `main()` 함수를 두어 실행을 래핑합니다.
+
+### Testing Practices
+- `pytest`를 사용하여 로직의 정확성을 검증합니다.
+- 특히 EU Numbering에 따른 인덱스 오프셋 계산(`get_residue_index`)과 변이 문자열 파싱(`parse_mutation`)에 대한 엣지 케이스 테스트를 중시합니다.
+
+### Data Management
+- 새로운 서열이나 변이 프리셋은 `src/fc_engineer/data/*.yaml` 파일에 선언적으로 추가합니다.
+- `pyproject.toml`의 `[tool.setuptools.package-data]` 설정을 통해 패키징 시 YAML 파일이 누락되지 않도록 관리합니다.
+
+## User Interface Guidelines
+- **Shortcuts**: 사용자의 편의를 위해 `Enter`(생성), `Ctrl+Y`(클립보드 복사), `Ctrl+C`(종료) 등의 단축키를 적극 활용합니다.
+- **Notification**: 변이 적용 중 오류가 발생할 경우 TUI 하단의 `Log` 위젯 또는 `notify` 알림을 통해 사용자에게 즉각 피드백을 제공합니다.
+
+## Sentinel
+
+### 2023-10-24 - Rich Markup Injection in Textual/Rich Log Widget
 **Vulnerability:** User-provided inputs (such as custom mutations like `S239[bold]X`) could be passed directly to a `Log` widget's `write` method, which by default parses strings as Rich markup. This could lead to UI rendering issues or crashing the application entirely with unclosed tags (e.g. `[unclosed`).
 **Learning:** In Textual and Rich, if you accept user-provided strings and display them using a `write` or print method that evaluates markup by default, you must explicitly disable markup parsing or escape the string first. The `escape` function from `rich.markup` is necessary when interpolating unvalidated user inputs within other markup strings (e.g., `f"[red]{user_input}[/red]"` will crash if `user_input` contains unclosed brackets).
 **Prevention:** Always use `escape()` from `rich.markup` when displaying dynamically generated text containing user input via Rich components, or pass `markup=False` when printing plain text.
 
-## 2026-04-17 - [Missing Input Validation & Length Limits]
-**Vulnerability:** The application parsed user-provided mutation strings via basic index slicing and lacked bounds/length constraints in the UI. This allowed invalid formats to crash the application, leak internal Python exception traces, and exposed a potential DoS risk through unbounded input length processing.
-**Learning:** In Textual UIs, custom input fields should leverage built-in properties like `max_length` and `restrict` regex to limit size and characters early. Similarly, logic functions parsing strings must enforce strict regex structural validation instead of relying on optimistic string slicing, to ensure predictable fail-states.
-**Prevention:** Always implement defense-in-depth: constrain input length and character sets at the UI layer using Textual's input properties, and rigorously validate structural format at the core logic layer using `re.match` before parsing.
-
-## 2024-05-24 - [Unhandled UI State Exceptions Exposing Stack Traces]
-**Vulnerability:** TUI application components (e.g. OptionList selections, sequence dictionary lookups) lacked validation for missing states or invalid keys. When a user advanced without making a selection or if corrupted sequence data was provided, unhandled `TypeError` or `KeyError` exceptions bypassed application logic, crashing the UI and dumping raw Python stack traces into the terminal. This exposed internal codebase paths and architecture details.
-**Learning:** In TUI frameworks like Textual, user actions can occur when UI state is not fully populated (e.g., pressing Enter on an empty list). Dictionary lookups for critical data (like base sequences) must not assume keys exist. Failing to handle these states gracefully leaks sensitive technical information and degrades security through poor error handling.
-**Prevention:** Always validate UI state (e.g., check `highlighted is not None`) before accessing properties. Use `.get()` with defaults for dictionary lookups instead of direct bracket access. Wrap critical processing blocks in `try...except` and log errors securely while presenting a generic, non-exposing message to the UI via user notifications or log widgets.
-
-## 2024-06-15 - [Regex Validation Bypass via Trailing Newline]
-**Vulnerability:** The application used `$` as an end-of-string anchor in `re.match` for input validation (e.g., parsing mutations). In Python, `$` matches either the end of the string OR just before a trailing newline. This allowed inputs with trailing newlines (e.g., `A118X\n`) to pass validation but cause unhandled exceptions later when parsing (e.g., `int()` on sliced strings).
-**Learning:** Python's `re` module behavior for `$` can lead to validation bypasses if inputs contain trailing newlines. The `\Z` anchor should be used for strict end-of-string matching.
-**Prevention:** Always use `\Z` instead of `$` in Python regular expressions when strict input format validation is required, and ensure UI input fields restrict whitespace characters to explicitly permitted ones (like a space) rather than the broad `\s` which includes newlines.
-
-## 2024-06-25 - [Missing Input Limits leading to DoS Risk]
-**Vulnerability:** The mutation parser (`parse_mutation`) and processor (`apply_mutations`) lacked bounds checking on the size and quantity of inputs. This exposed the application to potential resource exhaustion (Denial of Service) attacks if a user provided an excessively long mutation string or an enormous list of mutations.
-**Learning:** Even internal or UI-driven string parsing functions need constraints. Regular expressions and loops processing user input without bounds can be abused to consume excessive CPU or memory.
-**Prevention:** Always implement hard limits on input lengths (e.g., max string length) and processing bounds (e.g., maximum number of items in a list) at the core logic layer, regardless of UI-level restrictions.
-
-## 2026-04-26 - [Missing YAML File Size Validation]
-**Vulnerability:** The application loaded configuration `yaml` files without checking their sizes. This exposed a potential Denial of Service (DoS) vulnerability via memory exhaustion, where processing an exceptionally large file would consume excessive resources.
-**Learning:** File input streams must be strictly bounded before parsing content. Relying entirely on safe loaders without checking the incoming buffer size leaves applications vulnerable to resource exhaustion.
-**Prevention:** Always verify file sizes against a defined maximum limit (e.g., 1MB) using `os.path.getsize` before opening and parsing data, particularly with external configuration files or user-provided files.
-## 2024-08-16 - [Missing File Size Limitations for YAML Loading]
-**Vulnerability:** The application used `yaml.safe_load()` without checking the size of the underlying files (`sequences.yaml` and `mutants.yaml`). This allowed the potential for Denial of Service (DoS) attacks via memory exhaustion if a user provided an excessively large file.
-**Learning:** `yaml.safe_load()` prevents arbitrary code execution but does not protect against memory exhaustion from very large files. File sizes should always be validated before attempting to read and parse them into memory.
-**Prevention:** Implemented a file size check (`os.path.getsize(path) <= MAX_FILE_SIZE`) before opening and parsing YAML files. Added explicit error logging when the limit is exceeded.
-## 2026-04-24 - [Missing Sequence Type Validation leading to Stack Trace Leak]
-**Vulnerability:** The application retrieved the base sequence from a YAML-sourced dictionary but did not validate its type. If the sequence data was malformed (e.g., an integer or list instead of a string), passing it to the `apply_mutations` function would cause an unhandled `TypeError` (e.g., `'int' object is not iterable`) when attempting to convert it to a list. This would crash the TUI and leak internal Python exception traces.
-**Learning:** In addition to validating the top-level structure of loaded data files (e.g., ensuring the root is a dictionary), deeply nested values that are passed to critical processing logic must also be explicitly type-checked before use to prevent unexpected fail-states and architecture leaks.
-**Prevention:** Always validate the type of data retrieved from configuration files (e.g., using `isinstance(val, str)`) before processing it, especially when the logic assumes a specific iterable or string behavior. Log formatting errors securely without leaking system internals.
-## 2026-04-27 - [Unicode Digit Injection in Regex Validation]
-**Vulnerability:** The application used  in the regex for mutation parsing (). In Python 3,  matches all Unicode digits (e.g., Arabic numerals `١٢٣`), not just ASCII digits `0-9`. This could allow an attacker to bypass basic input validation expectations, leading to unexpected behavior when  processes these non-ASCII digits.
-**Learning:** Python's  character class is broader than expected and matches any Unicode digit. When strict input format validation is required, especially for numeric inputs that map to specific logic, ASCII digits should be explicitly enforced.
-**Prevention:** Always use  instead of  in Python regular expressions when strict validation of ASCII-only numeric input is required.
-## 2024-04-27 - [Unicode Digit Injection in Regex Validation]
+### 2024-04-27 - Unicode Digit Injection in Regex Validation
 **Vulnerability:** The application used `\d+` in the regex for mutation parsing (`parse_mutation`). In Python 3, `\d` matches all Unicode digits (e.g., Arabic numerals `١٢٣`), not just ASCII digits `0-9`. This could allow an attacker to bypass basic input validation expectations, leading to unexpected behavior when `int()` processes these non-ASCII digits.
 **Learning:** Python's `\d` character class is broader than expected and matches any Unicode digit. When strict input format validation is required, especially for numeric inputs that map to specific logic, ASCII digits should be explicitly enforced.
 **Prevention:** Always use `[0-9]` instead of `\d` in Python regular expressions when strict validation of ASCII-only numeric input is required.
 
-## 2024-10-27 - [Type Coercion Regressions vs Explicit Validation]
-**Vulnerability:** While trying to secure YAML data structures against type-based crashes (e.g., encountering ints instead of strings), modifying `main.py` to mutate loaded dictionaries (`isotypes[k] = ...`) or silently casting arbitrary keys/values to strings without bounds caused severe logical regressions and potential `NameError` crashes due to breaking explicit fallback logic.
-**Learning:** Security input validation should never silently mutate or truncate valid configuration structures out of strict schema guessing. Relying on strict type assertions via `isinstance` while gracefully falling back to empty/safe defaults is the correct way to validate input without hallucinating a rigid schema that breaks functionality.
-**Prevention:** Use defensive type checking (`isinstance()`) combined with conditional ternary fallbacks (e.g. `val if isinstance(val, dict) and all(...) else {}`) to secure input without introducing side effects or losing application state.
-## 2024-05-10 - [Missing Sequence Type Validation leading to Stack Trace Leak]
+### 2024-05-10 - Missing Sequence Type Validation leading to Stack Trace Leak
 **Vulnerability:** The application retrieved the base sequence from a YAML-sourced dictionary but did not validate the intermediate dictionary's type (e.g., `isotype_data`). If the `yaml` file contained invalid data (e.g., `isotypes: { igg1: "not a dict" }`), calling `isotype_data.get(allotype)` would raise an `AttributeError` on a string, crashing the TUI and leaking internal Python exception traces.
 **Learning:** In addition to validating the top-level structure of loaded data files, deeply nested values that are passed to critical processing logic (or used as dictionaries) must also be explicitly type-checked before use to prevent unexpected fail-states and architecture leaks.
 **Prevention:** Always validate the type of data retrieved from configuration files (e.g., using `isinstance(val, dict)`) before calling dictionary methods like `.get()` on it.
 
-## 2024-05-24 - [Unnecessary Markup Escaping on Trusted Internal Data]
-**Vulnerability:** The application was proposed to have Rich markup injection vulnerabilities from strings loaded via static internal configuration YAML files (e.g. `sequences.yaml`).
-**Learning:** Escaping markup on trusted internal data files that are not modified by end users is a form of "security theater". If an attacker can modify internal application source or config files, they already have a higher level of compromise.
-**Prevention:** Focus input escaping specifically on actual external user input paths, rather than treating trusted internal static configurations as a threat model.
-
-## 2024-05-24 - [Missing Type Validation for List Labels in TUI]
-**Vulnerability:** The application loaded `common_mutations` presets from a YAML file, checking that `value` was a string but omitting the type check for `label`. The UI component `SelectionList` expects a string for the prompt label. Providing a malformed YAML containing list types or integers as labels would crash the application with a `TypeError` and leak stack traces to the terminal.
-**Learning:** All properties loaded from YAML that interact with specific UI expectations (e.g., Textual labels) must be strictly type-checked.
-**Prevention:** Ensured `isinstance(item.get("label"), str)` is verified before returning the parsed presets from `load_yaml_data`.
-
-## 2026-05-02 - [YAML Bomb (Billion Laughs) DoS Vulnerability despite File Size Limits]
-**Vulnerability:** The application used `yaml.safe_load()` combined with a 1MB file size limit to load configurations. However, `yaml.safe_load()` still evaluates YAML aliases and anchors. An attacker could provide a very small YAML file (well under 1MB) containing heavily nested aliases (a "YAML Bomb" or "Billion Laughs" attack) that expand exponentially in memory, causing a Denial of Service (DoS) via memory exhaustion.
-**Learning:** Checking file size is insufficient to prevent memory exhaustion when parsing formats that support data expansion features like aliases. `yaml.safe_load` protects against arbitrary object instantiation but does not block alias expansion by default.
-**Prevention:** Always implement a custom SafeLoader that explicitly raises an error on `yaml.events.AliasEvent` (e.g., overriding `compose_node` and using `self.check_event()`) when loading untrusted YAML, to fully mitigate exponential expansion attacks.
-
-## 2026-05-03 - [Infinite Stream DoS Vulnerability bypassing File Size Limits]
-**Vulnerability:** The application used `os.path.exists()` and `os.path.getsize()` to validate file size before passing the file object to `yaml.load()`. However, special device files (like `/dev/zero`) or named pipes can return a size of `0`, bypassing the size check. Because `yaml.load(f)` reads the stream until EOF, reading an infinite stream would lead to CPU and memory exhaustion (Denial of Service).
-**Learning:** `os.path.getsize()` is unreliable for special files. Furthermore, passing an unconstrained file-like object directly to a parser allows the parser to consume unbounded memory if the stream does not end.
-**Prevention:** Always verify that a path points to a regular file using `os.path.isfile()` rather than just `os.path.exists()`. Additionally, apply defense-in-depth by explicitly reading the file contents with a bounded size limit (e.g., `content = f.read(MAX_FILE_SIZE + 1)`) and checking the length before passing the data to the parser.
-## 2024-05-10 - [Silent Exception Handling Hiding Security/Config Issues]
+### 2024-05-10 - Silent Exception Handling Hiding Security/Config Issues
 **Vulnerability:** The application used `try...except Exception as e: pass` blocks when attempting to load critical configuration files (`sequences.yaml` and `mutants.yaml`). This pattern silently swallowed errors, effectively blinding the application to potential security issues or misconfigurations (e.g., malformed data, permissions errors).
 **Learning:** Silent failures violate the "fail securely" and "maintain security visibility" principles. If configuration parsing fails, the system might operate in an unpredictable default state without any diagnostic trace for developers or security monitors.
 **Prevention:** Always log exceptions explicitly, even if the application can recover or fallback. Use mechanisms like `print(..., file=sys.stderr)` or standard logging libraries to record the `Exception` details when handling external inputs or critical configurations.
 
-## 2024-05-10 - [Clipboard Data Exposure]
+### 2024-05-10 - Clipboard Data Exposure
 **Vulnerability:** The application allowed users to copy sensitive proprietary sequences (e.g., antibody sequences) to the OS clipboard, where the data could remain indefinitely. This exposed the data to unauthorized access by other applications or users who later paste the clipboard contents.
 **Learning:** Copying sensitive data to the clipboard introduces a data exposure risk because the clipboard is shared across the operating system and is not isolated to the application.
 **Prevention:** Implement an auto-clear mechanism (e.g., a timeout) to remove sensitive data from the clipboard after a short duration (e.g., 30 seconds), ensuring it matches the previously copied data before clearing to avoid accidentally deleting unrelated user clipboard content.
 
-## 2026-05-10 - [Clipboard Auto-clear Bypass via UI Navigation]
-**Vulnerability:** The application implemented an auto-clear clipboard timer (e.g. `self.set_timer(30, self.clear_clipboard)`) attached to a specific UI screen (`ResultScreen`). If the user navigated away from this screen (causing the screen to be destroyed or popped from the stack) before the timer elapsed, the timer was silently cancelled. This left sensitive proprietary sequences exposed in the OS clipboard indefinitely, bypassing the intended security control.
-**Learning:** Security controls that rely on asynchronous tasks or timers within a UI framework must not be bound to ephemeral UI components (like screens or widgets) whose lifecycles are controlled by user navigation.
-**Prevention:** Always attach background security tasks (like clipboard clearing, auto-logout, or temporary file cleanup) to the persistent root application state (e.g. `App` in Textual) to ensure they complete regardless of UI navigation events.
-
-## 2024-05-11 - [Clipboard Auto-clear Timer Missing Argument]
+### 2024-05-11 - Clipboard Auto-clear Timer Missing Argument
 **Vulnerability:** The application attempted to clear the clipboard for security, but the timer callback `self.app.clear_clipboard` was missing the required `content_to_clear` argument. This caused a `TypeError` when the timer fired, meaning the clipboard was never actually cleared and sensitive sequences remained exposed.
 **Learning:** When passing bound methods with arguments to UI framework timers (like `set_timer` in Textual), you must use `functools.partial` or a lambda to ensure the required arguments are passed when the callback is executed. Otherwise, the security control silently fails via an unhandled exception.
 **Prevention:** Always ensure timer callbacks are correctly bound with their required arguments (e.g., using `functools.partial`), and explicitly test asynchronous security controls to ensure they execute without runtime errors.
-## 2026-05-13 - [Clipboard Data Exposure on Application Exit]
-**Vulnerability:** The application copies sensitive proprietary sequences to the OS clipboard and relies on a 30-second timer to auto-clear it. However, if the user exits the application before the 30 seconds elapse, the application terminates, the timer is destroyed without firing, and the sensitive data remains in the clipboard indefinitely, exposing it to unauthorized access.
-**Learning:** Background timers within an application's lifecycle are not guaranteed to run if the application itself is terminated early. Security controls meant to cleanup external state (like the OS clipboard) upon completion of an action must also account for early application shutdown.
-**Prevention:** Implement teardown security logic by hooking into the application's exit lifecycle (e.g., using `on_unmount` in Textual's `App` class) to clear sensitive OS-level state (like the clipboard) forcefully if it was set during the session.
 
-## 2026-05-14 - [Inaccurate Teardown State Tracking leading to Clipboard Data Exposure]
-**Vulnerability:** The application's `on_unmount` lifecycle hook attempted to clear sensitive clipboard data upon exit using `self.last_fasta` (the last *generated* sequence) instead of explicitly tracking what was actually *copied* to the clipboard. If a user copied Sequence A, then merely generated (but did not copy) Sequence B, exiting the app would attempt to clear Sequence B. The clipboard match would fail, and Sequence A would remain exposed in the OS clipboard indefinitely.
-**Learning:** Security teardown logic must track the exact, specific state of the external system it intends to clean up, rather than relying on loosely correlated application state variables (like "last generated item").
-**Prevention:** Always maintain a dedicated state variable (e.g., `self.copied_fasta`) that is strictly updated only when the specific security-relevant action (copying to clipboard) occurs, and use that exact variable for the corresponding teardown/cleanup logic.
-## 2024-05-16 - [Missing Nested Value Validation in YAML Load]
+### 2024-05-24 - Unhandled UI State Exceptions Exposing Stack Traces
+**Vulnerability:** TUI application components (e.g. OptionList selections, sequence dictionary lookups) lacked validation for missing states or invalid keys. When a user advanced without making a selection or if corrupted sequence data was provided, unhandled `TypeError` or `KeyError` exceptions bypassed application logic, crashing the UI and dumping raw Python stack traces into the terminal. This exposed internal codebase paths and architecture details.
+**Learning:** In TUI frameworks like Textual, user actions can occur when UI state is not fully populated (e.g., pressing Enter on an empty list). Dictionary lookups for critical data (like base sequences) must not assume keys exist. Failing to handle these states gracefully leaks sensitive technical information and degrades security through poor error handling.
+**Prevention:** Always validate UI state (e.g., check `highlighted is not None`) before accessing properties. Use `.get()` with defaults for dictionary lookups instead of direct bracket access. Wrap critical processing blocks in `try...except` and log errors securely while presenting a generic, non-exposing message to the UI via user notifications or log widgets.
+
+### 2024-05-24 - Missing Type Validation for List Labels in TUI
+**Vulnerability:** The application loaded `common_mutations` presets from a YAML file, checking that `value` was a string but omitting the type check for `label`. The UI component `SelectionList` expects a string for the prompt label. Providing a malformed YAML containing list types or integers as labels would crash the application with a `TypeError` and leak stack traces to the terminal.
+**Learning:** All properties loaded from YAML that interact with specific UI expectations (e.g., Textual labels) must be strictly type-checked.
+**Prevention:** Ensured `isinstance(item.get("label"), str)` is verified before returning the parsed presets from `load_yaml_data`.
+
+### 2024-05-24 - Unnecessary Markup Escaping on Trusted Internal Data
+**Vulnerability:** The application was proposed to have Rich markup injection vulnerabilities from strings loaded via static internal configuration YAML files (e.g. `sequences.yaml`).
+**Learning:** Escaping markup on trusted internal data files that are not modified by end users is a form of "security theater". If an attacker can modify internal application source or config files, they already have a higher level of compromise.
+**Prevention:** Focus input escaping specifically on actual external user input paths, rather than treating trusted internal static configurations as a threat model.
+
+### 2024-05-24 - Missing Nested Value Validation in YAML Load
 **Vulnerability:** The application validated that the inner dictionary keys of `sequences.yaml` were strings but neglected to validate the values (the sequences themselves). If malformed, non-string data (like integers or lists) was present in the values, it could cause type-confusion bugs, leading to TUI crashes and stack trace leaks when the application attempts to perform string operations on them later.
 **Learning:** Stricter input validation requires defense-in-depth, explicitly ensuring all expected parts of a structure (both keys and values) match the expected data types. Validating only keys but ignoring values in nested configurations is an incomplete safety check.
 **Prevention:** In complex data validation (especially with configuration loads like YAML to dictionary), check both the keys and values using `isinstance(k, str) and isinstance(v, str)` before accepting the data as safe.
 
-## 2026-05-17 - [Deeply Nested YAML DoS (RecursionExhaustion) Vulnerability]
-**Vulnerability:** Even though the application used `yaml.safe_load()` combined with file size limits, and successfully protected against `AliasEvent` expansion attacks, it lacked depth checking. An attacker could craft a deeply nested structure (e.g. `[[[[[...]]]]]`) that is very small in size but causes the Python interpreter to exceed its maximum recursion limit when parsed by the underlying C or Python YAML parser implementation, leading to an unhandled crash (Denial of Service).
-**Learning:** File size limits and alias restrictions are insufficient to completely prevent Denial of Service during data parsing. Parsers often use recursion to handle nested structures, making them vulnerable to recursion exhaustion if the nesting depth is unbounded.
-**Prevention:** Implement a recursive depth limit tracking mechanism during parsing. For `pyyaml`, this can be done within a custom `SafeLoader` by tracking an internal `depth` counter inside `compose_node` and raising a parser exception if the depth exceeds a reasonable threshold (e.g. 50).
+### 2024-06-15 - Regex Validation Bypass via Trailing Newline
+**Vulnerability:** The application used `$` as an end-of-string anchor in `re.match` for input validation (e.g., parsing mutations). In Python, `$` matches either the end of the string OR just before a trailing newline. This allowed inputs with trailing newlines (e.g., `A118X\n`) to pass validation but cause unhandled exceptions later when parsing (e.g., `int()` on sliced strings).
+**Learning:** Python's `re` module behavior for `$` can lead to validation bypasses if inputs contain trailing newlines. The `\Z` anchor should be used for strict end-of-string matching.
+**Prevention:** Always use `\Z` instead of `$` in Python regular expressions when strict input format validation is required, and ensure UI input fields restrict whitespace characters to explicitly permitted ones (like a space) rather than the broad `\s` which includes newlines.
 
-## 2026-05-18 - [Rich Markup Injection via Trusted Configuration Interpolation]
+### 2024-06-25 - Missing Input Limits leading to DoS Risk
+**Vulnerability:** The mutation parser (`parse_mutation`) and processor (`apply_mutations`) lacked bounds checking on the size and quantity of inputs. This exposed the application to potential resource exhaustion (Denial of Service) attacks if a user provided an excessively long mutation string or an enormous list of mutations.
+**Learning:** Even internal or UI-driven string parsing functions need constraints. Regular expressions and loops processing user input without bounds can be abused to consume excessive CPU or memory.
+**Prevention:** Always implement hard limits on input lengths (e.g., max string length) and processing bounds (e.g., maximum number of items in a list) at the core logic layer, regardless of UI-level restrictions.
+
+### 2024-08-16 - Missing File Size Limitations for YAML Loading
+**Vulnerability:** The application used `yaml.safe_load()` without checking the size of the underlying files (`sequences.yaml` and `mutants.yaml`). This allowed the potential for Denial of Service (DoS) attacks via memory exhaustion if a user provided an excessively large file.
+**Learning:** `yaml.safe_load()` prevents arbitrary code execution but does not protect against memory exhaustion from very large files. File sizes should always be validated before attempting to read and parse them into memory.
+**Prevention:** Implemented a file size check (`os.path.getsize(path) <= MAX_FILE_SIZE`) before opening and parsing YAML files. Added explicit error logging when the limit is exceeded.
+
+### 2024-10-27 - Type Coercion Regressions vs Explicit Validation
+**Vulnerability:** While trying to secure YAML data structures against type-based crashes (e.g., encountering ints instead of strings), modifying `main.py` to mutate loaded dictionaries (`isotypes[k] = ...`) or silently casting arbitrary keys/values to strings without bounds caused severe logical regressions and potential `NameError` crashes due to breaking explicit fallback logic.
+**Learning:** Security input validation should never silently mutate or truncate valid configuration structures out of strict schema guessing. Relying on strict type assertions via `isinstance` while gracefully falling back to empty/safe defaults is the correct way to validate input without hallucinating a rigid schema that breaks functionality.
+**Prevention:** Use defensive type checking (`isinstance()`) combined with conditional ternary fallbacks (e.g. `val if isinstance(val, dict) and all(...) else {}`) to secure input without introducing side effects or losing application state.
+
+### 2026-04-17 - Missing Input Validation & Length Limits
+**Vulnerability:** The application parsed user-provided mutation strings via basic index slicing and lacked bounds/length constraints in the UI. This allowed invalid formats to crash the application, leak internal Python exception traces, and exposed a potential DoS risk through unbounded input length processing.
+**Learning:** In Textual UIs, custom input fields should leverage built-in properties like `max_length` and `restrict` regex to limit size and characters early. Similarly, logic functions parsing strings must enforce strict regex structural validation instead of relying on optimistic string slicing, to ensure predictable fail-states.
+**Prevention:** Always implement defense-in-depth: constrain input length and character sets at the UI layer using Textual's input properties, and rigorously validate structural format at the core logic layer using `re.match` before parsing.
+
+### 2026-05-02 - YAML Bomb (Billion Laughs) DoS Vulnerability despite File Size Limits
+**Vulnerability:** The application used `yaml.safe_load()` combined with a 1MB file size limit to load configurations. However, `yaml.safe_load()` still evaluates YAML aliases and anchors. An attacker could provide a very small YAML file (well under 1MB) containing heavily nested aliases (a "YAML Bomb" or "Billion Laughs" attack) that expand exponentially in memory, causing a Denial of Service (DoS) via memory exhaustion.
+**Learning:** Checking file size is insufficient to prevent memory exhaustion when parsing formats that support data expansion features like aliases. `yaml.safe_load` protects against arbitrary object instantiation but does not block alias expansion by default.
+**Prevention:** Always implement a custom SafeLoader that explicitly raises an error on `yaml.events.AliasEvent` (e.g., overriding `compose_node` and using `self.check_event()`) when loading untrusted YAML, to fully mitigate exponential expansion attacks.
+
+### 2026-05-03 - Infinite Stream DoS Vulnerability bypassing File Size Limits
+**Vulnerability:** The application used `os.path.exists()` and `os.path.getsize()` to validate file size before passing the file object to `yaml.load()`. However, special device files (like `/dev/zero`) or named pipes can return a size of `0`, bypassing the size check. Because `yaml.load(f)` reads the stream until EOF, reading an infinite stream would lead to CPU and memory exhaustion (Denial of Service).
+**Learning:** `os.path.getsize()` is unreliable for special files. Furthermore, passing an unconstrained file-like object directly to a parser allows the parser to consume unbounded memory if the stream does not end.
+**Prevention:** Always verify that a path points to a regular file using `os.path.isfile()` rather than just `os.path.exists()`. Additionally, apply defense-in-depth by explicitly reading the file contents with a bounded size limit (e.g., `content = f.read(MAX_FILE_SIZE + 1)`) and checking the length before passing the data to the parser.
+
+### 2026-05-10 - Clipboard Auto-clear Bypass via UI Navigation
+**Vulnerability:** The application implemented an auto-clear clipboard timer (e.g. `self.set_timer(30, self.clear_clipboard)`) attached to a specific UI screen (`ResultScreen`). If the user navigated away from this screen (causing the screen to be destroyed or popped from the stack) before the timer elapsed, the timer was silently cancelled. This left sensitive proprietary sequences exposed in the OS clipboard indefinitely, bypassing the intended security control.
+**Learning:** Security controls that rely on asynchronous tasks or timers within a UI framework must not be bound to ephemeral UI components (like screens or widgets) whose lifecycles are controlled by user navigation.
+**Prevention:** Always attach background security tasks (like clipboard clearing, auto-logout, or temporary file cleanup) to the persistent root application state (e.g. `App` in Textual) to ensure they complete regardless of UI navigation events.
+
+### 2026-05-13 - Clipboard Data Exposure on Application Exit
+**Vulnerability:** The application copies sensitive proprietary sequences to the OS clipboard and relies on a 30-second timer to auto-clear it. However, if the user exits the application before the 30 seconds elapse, the application terminates, the timer is destroyed without firing, and the sensitive data remains in the clipboard indefinitely, exposing it to unauthorized access.
+**Learning:** Background timers within an application's lifecycle are not guaranteed to run if the application itself is terminated early. Security controls meant to cleanup external state (like the OS clipboard) upon completion of an action must also account for early application shutdown.
+**Prevention:** Implement teardown security logic by hooking into the application's exit lifecycle (e.g., using `on_unmount` in Textual's `App` class) to clear sensitive OS-level state (like the clipboard) forcefully if it was set during the session.
+
+### 2026-05-14 - Inaccurate Teardown State Tracking leading to Clipboard Data Exposure
+**Vulnerability:** The application's `on_unmount` lifecycle hook attempted to clear sensitive clipboard data upon exit using `self.last_fasta` (the last *generated* sequence) instead of explicitly tracking what was actually *copied* to the clipboard. If a user copied Sequence A, then merely generated (but did not copy) Sequence B, exiting the app would attempt to clear Sequence B. The clipboard match would fail, and Sequence A would remain exposed in the OS clipboard indefinitely.
+**Learning:** Security teardown logic must track the exact, specific state of the external system it intends to clean up, rather than relying on loosely correlated application state variables (like "last generated item").
+**Prevention:** Always maintain a dedicated state variable (e.g., `self.copied_fasta`) that is strictly updated only when the specific security-relevant action (copying to clipboard) occurs, and use that exact variable for the corresponding teardown/cleanup logic.
+
+### 2026-05-18 - Rich Markup Injection via Trusted Configuration Interpolation
 **Vulnerability:** The application correctly escaped user-provided sequences before displaying them, but failed to escape internal configuration data (like dictionary keys from YAML) when interpolating them into Rich-enabled Textual UI elements (like `Label`, `OptionList`, and `SelectionList`). If a configuration field contained stray brackets (e.g., `[red]`), it would be evaluated as Rich markup, causing unintended formatting, UI crashes (if the tag was unbalanced), or XSS-like markup injection.
 **Learning:** Defense-in-depth requires that *all* variable data injected into a markup-evaluating context (like Rich in Textual) must be explicitly sanitized/escaped, regardless of whether the data source is considered "trusted" (like an internal config file).
 **Prevention:** Always use `rich.markup.escape()` when interpolating any variable (even internal keys or configuration labels) into Textual widgets or Rich strings that evaluate markup.
 
-## 2026-05-21 - [Path Information Disclosure in Error Logs]
+### 2026-05-21 - Path Information Disclosure in Error Logs
 **Vulnerability:** The application logged and printed the absolute paths of configuration files (`sequences.yaml` and `mutants.yaml`) when encountering errors (e.g., file size limits exceeded, parse errors). This behavior unintentionally exposed the internal backend directory structure in terminal logs.
 **Learning:** Detailed file paths should not be exposed in user-facing error messages or console logs, as they provide potential attackers with information about the underlying system environment.
 **Prevention:** Use `os.path.basename()` to limit file references in logs and error messages strictly to the file name, avoiding the exposure of absolute local system paths.
 
-## 2026-05-21 - [Overlapping Auto-clear Clipboard Timers]
+### 2026-05-21 - Overlapping Auto-clear Clipboard Timers
 **Vulnerability:** Successive copying actions generated multiple concurrent auto-clear clipboard timers. This could cause a prematurely-fired timer from a previous copy operation to unexpectedly clear newly copied secure data, compromising the intended user experience of the security feature.
 **Learning:** Overlapping security timeout events can cause race-like conditions that degrade or accidentally activate a security feature earlier than designed.
 **Prevention:** Explicitly track and cancel active timeout controls before initiating a new one for the same component state, preventing overlapping triggers.
 
-## 2026-05-26 - [Stale Application State Data Leakage]
+### 2026-05-26 - Stale Application State Data Leakage
 **Vulnerability:** The application failed to clear the previously generated sensitive sequence (`self.app.last_fasta`) at the beginning of a new generation attempt. If a subsequent sequence generation failed, the application state retained the older sequence. A user pressing the "Copy" hotkey would then unknowingly copy the previous, potentially unrelated proprietary sequence to the OS clipboard, causing unintended data exposure or contamination.
 **Learning:** Application state variables holding sensitive information must be explicitly cleared or reset at the absolute beginning of any lifecycle event or function that intends to mutate or replace them. Relying on successful completion to overwrite the state leaves the application vulnerable if the process fails prematurely.
 **Prevention:** Immediately reset sensitive state variables (e.g., `self.app.last_fasta = ""`) upon entering the function responsible for generating new data, and explicitly verify the variable is truthy (`if self.app.last_fasta:`) before exporting it to external systems like the OS clipboard.
 
-## 2026-05-27 - [Log Formatting Corruption via Empty Path Replacement]
+### 2026-05-27 - Log Formatting Corruption via Empty Path Replacement
 **Vulnerability:** When replacing sensitive path prefixes in exception messages to avoid information disclosure, the application code used `.replace(base_path, ".")`. If `base_path` happened to be an empty string, Python's `str.replace` replaced every character in the string with `.`, causing the entire error message to be corrupted (e.g., `.F.i.l.e. .n.o.t. .f.o.u.n.d.`). This effectively destroyed the audit log's utility, masking critical error details necessary for security visibility and diagnosis.
 **Learning:** Security sanitization logic (such as path redaction) can itself introduce denial-of-visibility or functional bugs if edge cases (like empty strings) are not explicitly handled.
 **Prevention:** Always conditionally check if a replacement string (like a base directory path) is truthy (`if base_path:`) before using it in string replacement operations to prevent widespread corruption of log or error messages.
 
-## 2026-05-30 - [In-Memory Sensitive State Leakage Across Sessions]
+### 2026-05-30 - In-Memory Sensitive State Leakage Across Sessions
 **Vulnerability:** The application failed to securely wipe sensitive in-memory application state variables (e.g., `selected_isotype`, `selected_allotype`, `all_mutants`, `last_fasta`) when the user navigated away from the result screen back to the main menu. If the user subsequently generated a new sequence but abandoned the process or if an error occurred, the stale data from the previous session remained in memory. Furthermore, `copied_fasta` was left in application memory even after the OS clipboard was cleared. This could lead to unintended data exposure or contamination in long-running application instances.
 **Learning:** Security teardown logic must also address in-memory state, not just external systems like the OS clipboard. When a user intentionally discards or navigates away from sensitive data, all related internal state variables should be immediately explicitly sanitized (wiped) to enforce the principle of data minimization and prevent stale state from affecting future operations.
 **Prevention:** Implement explicit state sanitization logic (e.g., setting variables to empty strings or `None`) in UI navigation handlers (like `action_quit_to_main`) that conclude a session, and ensure internal state variables related to external systems (like `copied_fasta` for the clipboard) are also wiped once the external system is successfully cleared.
 
-## 2026-06-01 - [Backward Navigation Data Leakage in Wizard UI]
+### 2026-06-01 - Backward Navigation Data Leakage in Wizard UI
 **Vulnerability:** The application failed to securely wipe sensitive in-memory application state variables (e.g., `selected_isotype`, `selected_allotype`, `all_mutants`, `last_fasta`) when the user navigated backward (e.g., pressing Escape) through the wizard interface. If the user retreated from a sensitive screen and the application state retained the older selections, stale data from the previous steps remained in memory.
 **Learning:** Security teardown logic must be explicit for all navigation paths. Backward navigation actions (e.g., `action_back` or popping screens) in stateful wizard interfaces can leave stale data in application-level variables if they merely pop the view without sanitizing the data entered on that screen. Using `on_unmount` hooks for this purpose is insufficient or disruptive because they trigger even during forward navigation.
 **Prevention:** Implement explicit state sanitization logic (e.g., setting variables to empty strings or `None`) in backward navigation handlers (like `action_back`) before popping the screen to prevent stale data leakage.
-## 2026-06-03 - [Unconditionally Clear Sensitive In-Memory Variables]
+
+### 2026-06-03 - Unconditionally Clear Sensitive In-Memory Variables
 **Vulnerability:** The application conditionally cleared sensitive in-memory variables (like `self.copied_fasta`) only if the external state wipe (the OS clipboard) succeeded. This tied internal application state teardown to external success, risking state leakage.
 **Learning:** Application state variables holding sensitive information must be explicitly cleared or reset at the absolute beginning of any lifecycle event or function that intends to mutate or replace them.
 **Prevention:** Unconditionally reset sensitive state at the start of functions (like `clear_clipboard` and `action_copy_to_clipboard`) before evaluating any conditional logic or trying external operations.
 
-## 2026-06-04 - [Stale External Data Leakage on Backward Navigation]
+### 2026-06-04 - Stale External Data Leakage on Backward Navigation
 **Vulnerability:** The application securely wiped sensitive application state variables on backward navigation in the wizard UI, but failed to immediately clear external system state like the OS clipboard. If a user navigated backward from the result screen or returned to the main menu without the auto-clear timer finishing, the copied data would remain in the clipboard indefinitely (if the timer was cancelled or lost context), exposing sensitive intellectual property.
 **Learning:** Backward navigation from sensitive screens must explicitly and immediately trigger the teardown of external system state (like the OS clipboard) and its associated internal tracking variables to prevent external data leakage.
 **Prevention:** In backward navigation handlers (`action_back`, `action_quit_to_main`), invoke explicit external state teardown methods (e.g., `clear_clipboard`) and explicitly set related tracking variables (e.g., `copied_fasta`) to empty before popping the screen.
 
-## 2026-06-05 - Stale External State Due To Premature Variable Reset
+### 2026-06-05 - Stale External State Due To Premature Variable Reset
 **Vulnerability:** In situations where the application intends to copy sensitive application data (like generating a FASTA sequence) to the OS clipboard, a failure occurring right after internal tracking variables are wiped but before the OS clipboard itself is wiped could leave the sensitive data stranded on the user's OS clipboard and effectively bypass internal security auto-clear protections.
 **Learning:** External state that relies on internal application state variables to function as a teardown condition must be wiped first, before its tracking variables are reset. Resetting variables inside a function intending to copy a new set of data requires checking the OS clipboard and clearing it first to ensure stale properties are removed if exceptions are thrown during assignment.
 **Prevention:** If wiping the external state depends on knowing what was previously copied (e.g. matching against `pyperclip.paste()` to ensure only our app's data is cleared), always attempt to wipe the external state using the old value before wiping the internal tracker variable containing the old value.
 
-## 2026-06-07 - [Prevent Exception Information Disclosure in Mutation Parsing]
+### 2026-06-07 - Prevent Exception Information Disclosure in Mutation Parsing
 **Vulnerability:** The application caught exceptions during mutation parsing (e.g., in `apply_mutations`) and appended the raw exception string (`str(e)`) to the list of errors shown to the user. This leaked internal exception structures and details to the user interface.
 **Learning:** Raw exception messages should never be exposed in user-facing elements, as they can leak information about the application's internal workings and implementation details.
 **Prevention:** Catch specific exceptions and return generic, safe error messages to the user (e.g., "Invalid mutation format") instead of embedding `str(e)` in user-facing error arrays.
 
-## 2026-06-09 - [Teardown Sequence Vulnerability]
+### 2026-06-09 - Teardown Sequence Vulnerability
 **Vulnerability:** The application attempted to clear the external OS clipboard but failed to clear the internal tracking variable `self.copied_fasta` if an exception occurred during the external clipboard interaction. This left the application in a compromised state where internal memory retained sensitive data that the external system failed to clear.
 **Learning:** When tearing down sensitive state, if the external state wipe relies on an internal tracking variable, the external wipe must be attempted first inside a `try` block, and the internal variable must be unconditionally wiped afterward in a `finally` block. This prevents edge cases where external failures bypass internal memory scrubbing.
 **Prevention:** Always structure security teardown logic that depends on both external and internal state with `try...finally` blocks, ensuring that internal tracking variables are unconditionally cleared even if the external system interaction fails.
 
-## 2026-06-10 - [Stale External State Due To Premature Navigation Escape]
+### 2026-06-10 - Stale External State Due To Premature Navigation Escape
 **Vulnerability:** The application attempted to clear the external OS clipboard and sensitive variables during backwards UI navigation (`action_back`, `action_quit_to_main`, and `on_unmount`). However, if clearing the external clipboard failed (e.g. raised an exception), the execution flow would escape before the internal tracking variables (like `copied_fasta`) and the UI state were properly wiped. This left the application in a compromised state where sensitive internal memory data was retained and could potentially leak in subsequent operations.
 **Learning:** When tearing down sensitive state, if the external state wipe relies on an internal tracking variable, the external wipe must be attempted first inside a `try` block, and the internal variables must be unconditionally wiped afterward in a `finally` block to prevent edge cases where external failures bypass internal memory scrubbing. Navigation away from the screen should also be guaranteed in the `finally` block.
 **Prevention:** Always structure security teardown logic for backward navigation and application unmounting with `try...finally` blocks, ensuring that internal tracking variables and navigation actions are unconditionally executed even if the external system interaction fails.
 
-## 2026-06-11 - [Defense-in-Depth Sanitization in Backend Logic]
+### 2026-06-11 - Defense-in-Depth Sanitization in Backend Logic
 **Vulnerability:** The application relied on the Textual `Input` widget's `restrict` regex (`r"^[a-zA-Z0-9/, ]*\Z"`) and sanitization during `action_generate` to prevent invalid characters from being parsed. However, if `apply_mutations` was called programmatically or bypassed the UI layer, it could be fed un-sanitized data, which could lead to unexpected behavior or potential denial-of-service depending on how parsing components (like `parse_mutation`) handled invalid characters.
 **Learning:** Security validations and input sanitization should not be solely reliant on UI-level controls. A defense-in-depth approach requires that backend functions validating or processing input independently enforce their own sanitization and constraints, even if the frontend attempts to do so.
 **Prevention:** Implement strict validation directly inside core backend logic functions (`apply_mutations`) to reject any invalid characters and ensure security restrictions apply regardless of the invocation context.
 
-## 2026-06-12 - [Defense-in-Depth for Internal Data Sequences]
+### 2026-06-12 - Defense-in-Depth for Internal Data Sequences
 **Vulnerability:** The application assumed that the base protein sequences loaded from `sequences.yaml` were perfectly formatted strings consisting only of valid amino acid characters. If the configuration file was modified, corrupted, or contained special characters, the application lacked backend defense-in-depth logic to catch it, leading to potential logical errors or crashes downstream.
 **Learning:** Security validations should not just apply to user input, but also to data loaded from internal data files before processing it. Even trusted local configuration files can become corrupted or misconfigured, which could bypass validation meant strictly for frontend user input.
 **Prevention:** Implement strict regex validation checks (e.g., `re.fullmatch(r"[A-Z]+", sequence)`) on base sequence data before applying operations like mutations, ensuring the system always operates on expected, sanitized data types.
 
-## 2026-06-15 - [Prevent Exception Information Disclosure in Initial File Loading]
+### 2026-06-15 - Prevent Exception Information Disclosure in Initial File Loading
 **Vulnerability:** The application caught exceptions during YAML file loading (`sequences.yaml` and `mutants.yaml`) and embedded the raw exception string (`str(e)`) in the stderr output message, even attempting to partially sanitize it by removing base paths. This could still leak internal exception structures, error states, and unhandled details about the application to the console or logs.
 **Learning:** Raw exception messages should never be exposed, even to stderr during initialization. While sanitizing known local paths is a good attempt, it is insufficient because `str(e)` can contain arbitrary context about internal application states that shouldn't be revealed.
 **Prevention:** Catch specific exceptions or general exceptions and output generic, safe error messages (e.g., "An unexpected error occurred.") rather than embedding `str(e)` in any output or log format that is accessible to users.
 
-## 2026-06-22 - [Loss of Security Visibility in Config Loading]
+### 2026-06-22 - Loss of Security Visibility in Config Loading
 **Vulnerability:** The application swallowed exceptions when loading critical configuration files (`sequences.yaml` and `mutants.yaml`), outputting only a generic error to `sys.stderr`. While this correctly prevented exception information disclosure to the user, it resulted in a complete loss of security visibility internally, making it impossible to diagnose underlying issues or potential attacks (like malformed YAML payloads).
 **Learning:** Security visibility is essential. While user-facing errors must be generic to prevent information leakage, internal logs must capture detailed exception information (including stack traces) to allow for effective debugging and security monitoring. Furthermore, any sensitive data (like local file paths) within the exception strings must be explicitly sanitized before logging to prevent internal path disclosure.
 **Prevention:** Use standard logging modules (e.g., `logger.error` with `exc_info=True`) to record full, sanitized exception details internally, while simultaneously ensuring only safe, generic error strings are sent to user-facing outputs like `sys.stderr` or UI widgets.
 
-## 2026-06-23 - [Prevent Path Disclosure in Exception Logging]
+### 2026-06-23 - Prevent Path Disclosure in Exception Logging
 **Vulnerability:** The application was using `exc_info=True` in several exception handlers when logging errors (e.g., `self.log.error(..., exc_info=True)`). This automatically appended the raw stack trace, including full file system paths, directly to the logs, potentially leaking the host environment's directory structure to unauthorized actors if the logs were exposed.
 **Learning:** Retaining internal stack traces is essential for debugging, but `exc_info=True` automatically outputs raw file paths. To prevent local path information disclosure while maintaining visibility, the traceback must be explicitly sanitized.
 **Prevention:** Instead of `exc_info=True`, manually capture the traceback using `traceback.format_exc()`, explicitly sanitize it (e.g., replacing `base_path` with `.`), and log the sanitized string.

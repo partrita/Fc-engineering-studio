@@ -1,15 +1,8 @@
-import sys
-import os
 import re
 import functools
-import logging
-import traceback
-from typing import Dict, List, Optional, Tuple, Set
-import yaml
-
 from textual import on
 from textual.app import App, ComposeResult
-from textual.containers import Container, Vertical, Center, Middle, Horizontal
+from textual.containers import Vertical, Horizontal
 from textual.widgets import (
     Button,
     Footer,
@@ -24,173 +17,12 @@ from textual.widgets import (
 )
 
 from textual.widgets.selection_list import Selection
-from textual.binding import Binding
 from textual.screen import Screen
 import pyperclip
 from rich.markup import escape
 
-logger = logging.getLogger(__name__)
-logger.addHandler(logging.NullHandler())
-
-
-def log_sanitized_error(logger_obj, msg: str, e: Exception):
-    base_path = os.path.dirname(__file__)
-    safe_err = str(e).replace(base_path, '.') if base_path else str(e)
-    safe_traceback = traceback.format_exc().replace(base_path, '.') if base_path else traceback.format_exc()
-    logger_obj.error(f"{msg}: {safe_err}\n{safe_traceback}")
-
-# --- Configuration & Data Loading ---
-
-class NoAliasSafeLoader(yaml.SafeLoader):
-    MAX_DEPTH = 50
-
-    def compose_node(self, parent, index):
-        if self.check_event(yaml.events.AliasEvent):
-            raise yaml.constructor.ConstructorError("Aliases are not allowed to prevent YAML bomb (DoS) attacks.")
-
-        if not hasattr(self, "depth"):
-            self.depth = 0
-        self.depth += 1
-
-        if self.depth > self.MAX_DEPTH:
-            raise yaml.constructor.ConstructorError("Maximum YAML nesting depth exceeded to prevent DoS attacks.")
-
-        node = super().compose_node(parent, index)
-        self.depth -= 1
-        return node
-
-def load_yaml_data():
-    base_path = os.path.dirname(__file__)
-    seq_path = os.path.join(base_path, "sequences.yaml")
-    mut_path = os.path.join(base_path, "mutants.yaml")
-    
-    isotypes = {}
-    common_muts = []
-    
-    # SECURITY: Max file size of 1MB to prevent DoS via memory exhaustion
-    MAX_FILE_SIZE = 1 * 1024 * 1024
-
-    try:
-        seq_name = os.path.basename(seq_path)
-        if os.path.isfile(seq_path):
-            if os.path.getsize(seq_path) > MAX_FILE_SIZE:
-                print(f"Error: {seq_name} exceeds 1MB limit.", file=sys.stderr)
-                raise ValueError(f"File {seq_name} exceeds maximum size of 1MB")
-            with open(seq_path, "r", encoding="utf-8") as f:
-                content = f.read(MAX_FILE_SIZE + 1)
-                if len(content) > MAX_FILE_SIZE:
-                    print(f"Error: {seq_name} content exceeds 1MB limit.", file=sys.stderr)
-                    raise ValueError(f"File {seq_name} content exceeds maximum size of 1MB")
-                data = yaml.load(content, Loader=NoAliasSafeLoader)  # nosec B506
-                if isinstance(data, dict):
-                    val = data.get("isotypes")
-                    isotypes = val if (
-                        isinstance(val, dict) and all(
-                            isinstance(k, str) and isinstance(v, dict) and all(isinstance(ik, str) and isinstance(iv, str) for ik, iv in v.items())
-                            for k, v in val.items()
-                        )
-                    ) else {}
-                else:
-                    print(f"Error: Parsed data from {seq_name} is not a dictionary.", file=sys.stderr)
-        else:
-            print(f"Error: Missing configuration file {seq_name}.", file=sys.stderr)
-    except Exception as e:
-        safe_err = str(e).replace(base_path, '.') if base_path else str(e)
-        safe_traceback = traceback.format_exc().replace(base_path, '.') if base_path else traceback.format_exc()
-        logger.error(f"Error loading {seq_name}: {safe_err}\n{safe_traceback}")
-        print(f"Error loading {seq_name}: An unexpected error occurred.", file=sys.stderr)
-
-    try:
-        mut_name = os.path.basename(mut_path)
-        if os.path.isfile(mut_path):
-            if os.path.getsize(mut_path) > MAX_FILE_SIZE:
-                print(f"Error: {mut_name} exceeds 1MB limit.", file=sys.stderr)
-                raise ValueError(f"File {mut_name} exceeds maximum size of 1MB")
-            with open(mut_path, "r", encoding="utf-8") as f:
-                content = f.read(MAX_FILE_SIZE + 1)
-                if len(content) > MAX_FILE_SIZE:
-                    print(f"Error: {mut_name} content exceeds 1MB limit.", file=sys.stderr)
-                    raise ValueError(f"File {mut_name} content exceeds maximum size of 1MB")
-                data = yaml.load(content, Loader=NoAliasSafeLoader)  # nosec B506
-                if isinstance(data, dict):
-                    val = data.get("common_mutations")
-                    common_muts = val if (
-                        isinstance(val, list) and all(
-                            isinstance(item, dict) and isinstance(item.get("value"), str) and isinstance(item.get("label"), str)
-                            for item in val
-                        )
-                    ) else []
-                else:
-                    print(f"Error: Parsed data from {mut_name} is not a dictionary.", file=sys.stderr)
-        else:
-            print(f"Error: Missing configuration file {mut_name}.", file=sys.stderr)
-    except Exception as e:
-        safe_err = str(e).replace(base_path, '.') if base_path else str(e)
-        safe_traceback = traceback.format_exc().replace(base_path, '.') if base_path else traceback.format_exc()
-        logger.error(f"Error loading {mut_name}: {safe_err}\n{safe_traceback}")
-        print(f"Error loading {mut_name}: An unexpected error occurred.", file=sys.stderr)
-        
-    return isotypes, common_muts
-
-SEQUENCES, COMMON_MUTATIONS = load_yaml_data()
-
-# --- Core Logic ---
-
-EU_START = 118
-
-def get_residue_index(pos: int, isotype: str) -> Optional[int]:
-    if isotype == "igg1": return pos - EU_START
-    elif isotype in ["igg2", "igg4"]:
-        if pos <= 222: return pos - EU_START
-        elif 223 <= pos <= 225: return None
-        else: return pos - EU_START - 3
-    return None
-
-def parse_mutation(m_str: str) -> Tuple[str, int, str]:
-    if len(m_str) > 10:
-        raise ValueError(f"Mutation string too long (max 10): {len(m_str)}")
-    m_str = m_str.upper()
-    # SECURITY: Use [0-9] instead of \d to strictly enforce ASCII digits and prevent Unicode digit injection
-    if not re.fullmatch(r"[A-Z][0-9]+[A-Z]", m_str):
-        raise ValueError(f"Invalid mutation format: {m_str}")
-    wt_aa = m_str[0]
-    pos = int(m_str[1:-1])
-    mut_aa = m_str[-1]
-    return wt_aa, pos, mut_aa
-
-def apply_mutations(sequence: str, mutants_str: str, isotype: str) -> Tuple[str, List[str]]:
-    # SECURITY: Defense-in-depth validation to ensure base sequence contains only valid amino acid characters
-    if sequence and not re.fullmatch(r"[A-Z]+", sequence):
-        return sequence, ["Error: Base sequence contains invalid characters."]
-
-    if not mutants_str: return sequence, []
-
-    # SECURITY: Enforce strict length limits on input string to prevent DoS (memory/CPU exhaustion)
-    if len(mutants_str) > 1000:
-        return sequence, ["Error: Mutation string exceeds maximum length of 1000 characters."]
-
-    # SECURITY: Defense-in-depth validation on the backend logic layer
-    if re.search(r'[^a-zA-Z0-9/, ]', mutants_str):
-        return sequence, ["Error: Mutation string contains invalid characters."]
-
-    mut_list = [m.strip() for m in mutants_str.replace(',', '/').split('/') if m.strip()]
-
-    MAX_MUTATIONS = 50
-    if len(mut_list) > MAX_MUTATIONS:
-        return sequence, [f"Error: Maximum of {MAX_MUTATIONS} mutations allowed."]
-
-    seq_list = list(sequence)
-    errors = []
-    for m in mut_list:
-        try:
-            wt_aa, pos, mut_aa = parse_mutation(m)
-            index = get_residue_index(pos, isotype)
-            if index is None: errors.append(f"Position {pos} is a Gap in {isotype}."); continue
-            if index < 0 or index >= len(seq_list): errors.append(f"Position {pos} is out of range."); continue
-            if seq_list[index] != wt_aa: errors.append(f"Pos {pos}: Expected '{wt_aa}', found '{seq_list[index]}'."); continue
-            seq_list[index] = mut_aa
-        except ValueError: errors.append(f"Format error: Invalid mutation '{m}'.")
-    return "".join(seq_list), errors
+from fc_engineer.config import SEQUENCES, COMMON_MUTATIONS, log_sanitized_error
+from fc_engineer.core import apply_mutations
 
 ANTIBODY_ASCII = r"""
   _____                                                 
@@ -200,7 +32,7 @@ ANTIBODY_ASCII = r"""
  |_|__\___|   __ _(_)_ __   ___  ___ _ __(_)_ __   __ _ 
   / _ \ '_ \ / _` | | '_ \ / _ \/ _ \ '__| | '_ \ / _` |
  |  __/ | | | (_| | | | | |  __/  __/ |  | | | | | (_| |
-  \___|_| |_|\__, |_|_| |_|\___|\___|_|  |_|_| |_|\__, |
+  \___|_|\__, |_|_| |_|\___|\___|_|  |_|_| |_|\__, |
   ___| |_ _  |___/_| (_) ___                      |___/ 
  / __| __| | | |/ _` | |/ _ \                           
  \__ \ |_| |_| | (_| | | (_) |                          
@@ -378,7 +210,7 @@ class ResultScreen(Screen):
         isotype = self.app.selected_isotype
         allotype = self.app.selected_allotype
         all_mutants = self.app.all_mutants
-        
+
         result_box = self.query_one("#result-box", Log)
         result_box.clear()
 
@@ -570,7 +402,7 @@ class MutantApp(App):
         width: 100%;
     }
     """
-    
+
     def on_mount(self) -> None:
         self.theme = "nord"
         self.selected_isotype = ""
