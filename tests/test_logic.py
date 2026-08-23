@@ -6,6 +6,7 @@ from fc_engineer.core import (
     apply_mutations,
     diff_sequences,
     generate_batch,
+    analyze_developability,
 )
 from fc_engineer.config import SEQUENCES, COMMON_MUTATIONS
 
@@ -142,6 +143,37 @@ def test_generate_batch_propagates_per_item_errors():
     # 두 번째 조합은 WT 불일치 오류를 포함하되 전체 배치는 계속 진행되어야 함
     assert not results[0][2]
     assert any("Expected 'C'" in e for e in results[1][2])
+
+# --- Developability analysis ---
+
+def test_analyze_developability_igg1_wt():
+    # IgG1 WT에서 알려진 liability 위치들을 정확히 탐지해야 함
+    seq = SEQUENCES["igg1"]["WT(P01857-1)"]
+    report = dict(analyze_developability(seq, "igg1"))
+    assert report["N-glycosylation motif (N-X-S/T)"] == [297]  # Fc N-글리코실화 부위
+    assert 252 in report["Oxidation-prone Met (M252/M428 = FcRn sites)"]
+    assert 428 in report["Oxidation-prone Met (M252/M428 = FcRn sites)"]
+
+def test_analyze_developability_n297a_removes_glycosylation():
+    seq = SEQUENCES["igg1"]["WT(P01857-1)"]
+    mut, _ = apply_mutations(seq, "N297A", "igg1")
+    report = dict(analyze_developability(mut, "igg1"))
+    assert report["N-glycosylation motif (N-X-S/T)"] == []
+
+def test_analyze_developability_invalid_input():
+    assert analyze_developability("", "igg1") == []
+    assert analyze_developability(None, "igg1") == []
+    assert analyze_developability("ASTK", "") == []
+
+def test_analyze_developability_positions_match_eu():
+    # 모든 보고된 위치는 유효한 EU 번호(>=118)여야 하고, 해당 위치의 잔기와 일치해야 함
+    seq = SEQUENCES["igg1"]["WT(P01857-1)"]
+    for category, positions in analyze_developability(seq, "igg1"):
+        for pos in positions:
+            assert pos >= 118
+            idx = get_residue_index(pos, "igg1")
+            if "Met" in category:
+                assert seq[idx] == "M"
 
 def test_parse_mutation():
     assert parse_mutation("S228P") == ("S", 228, "P")

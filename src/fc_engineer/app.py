@@ -23,7 +23,7 @@ import pyperclip
 from rich.markup import escape
 
 from fc_engineer.config import SEQUENCES, COMMON_MUTATIONS, log_sanitized_error
-from fc_engineer.core import apply_mutations, diff_sequences, generate_batch
+from fc_engineer.core import apply_mutations, diff_sequences, generate_batch, analyze_developability
 from fc_engineer.exporters import format_genbank, format_csv_report
 
 ANTIBODY_ASCII = r"""
@@ -350,6 +350,16 @@ class ResultScreen(Screen):
                 result_box.write(f"[bold]Mutations vs WT ({len(diffs)}):[/]")
                 for pos, wt_aa, mut_aa in diffs:
                     result_box.write(f"[yellow]• {escape(wt_aa)}{pos}{escape(mut_aa)}[/]")
+
+            # Developability summary: sequence liabilities annotated with EU positions
+            result_box.write("")
+            result_box.write("[bold]Developability summary:[/]")
+            for category, positions in analyze_developability(mutant_seq, isotype):
+                if positions:
+                    positions_str = ", ".join(str(p) for p in positions)
+                    result_box.write(f"• {escape(category)}: {positions_str}")
+                else:
+                    result_box.write(f"• {escape(category)}: none")
 
             # SECURITY: Audit log for sensitive intellectual property operation (Sequence Generation)
             self.log.info(f"Audit: Generated FASTA sequence for {isotype} {allotype} with mutations {display_muts}")

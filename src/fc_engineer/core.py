@@ -122,3 +122,47 @@ def generate_batch(base_seq: str, batch_str: str, isotype: str) -> List[Tuple[st
         seq_out, errors = apply_mutations(base_seq, combo, isotype)
         results.append((combo, seq_out, errors))
     return results
+
+# --- Developability Analysis ---
+
+def analyze_developability(sequence: str, isotype: str) -> List[Tuple[str, List[int]]]:
+    """Scan a sequence for developability-related liabilities (PTM hotspots).
+
+    Returns a list of (category, EU positions) tuples. Positions that do not
+    map to an EU number are skipped. Categories:
+      - N-glycosylation consensus (N-X-S/T)
+      - Deamidation-prone NG motifs
+      - Isomerization-prone DG motifs
+      - Oxidation-prone Met residues
+    """
+    findings: List[Tuple[str, List[int]]] = []
+    if not isinstance(sequence, str) or not sequence:
+        return findings
+    if not isinstance(isotype, str) or not isotype:
+        return findings
+
+    n = len(sequence)
+
+    glyco: List[int] = []
+    for i in range(n - 2):
+        if sequence[i] == "N" and sequence[i + 1] != "P" and sequence[i + 2] in ("S", "T"):
+            pos = get_eu_position(i, isotype)
+            if pos is not None:
+                glyco.append(pos)
+    findings.append(("N-glycosylation motif (N-X-S/T)", glyco))
+
+    ng: List[int] = []
+    dg: List[int] = []
+    met: List[int] = []
+    for i in range(n):
+        pos = get_eu_position(i, isotype)
+        if pos is None:
+            continue
+        pair = sequence[i:i + 2]
+        if pair == "NG": ng.append(pos)
+        if pair == "DG": dg.append(pos)
+        if sequence[i] == "M": met.append(pos)
+    findings.append(("Deamidation-prone NG", ng))
+    findings.append(("Isomerization-prone DG", dg))
+    findings.append(("Oxidation-prone Met (M252/M428 = FcRn sites)", met))
+    return findings
