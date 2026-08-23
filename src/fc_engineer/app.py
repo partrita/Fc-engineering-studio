@@ -23,7 +23,7 @@ import pyperclip
 from rich.markup import escape
 
 from fc_engineer.config import SEQUENCES, COMMON_MUTATIONS, log_sanitized_error
-from fc_engineer.core import apply_mutations, diff_sequences
+from fc_engineer.core import apply_mutations, diff_sequences, generate_batch
 from fc_engineer.exporters import format_genbank, format_csv_report
 
 ANTIBODY_ASCII = r"""
@@ -136,7 +136,7 @@ class AllotypeScreen(Screen):
         self.app.pop_screen()
 
 class MutationScreen(Screen):
-    BINDINGS = [("enter", "generate", "Generate"), ("escape", "back", "Back")]
+    BINDINGS = [("enter", "generate", "Generate"), ("escape", "back", "Back"), ("b", "batch", "Batch")]
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -186,6 +186,103 @@ class MutationScreen(Screen):
     def action_back(self) -> None:
         self.app.all_mutants = ""
         self.app.pop_screen()
+
+    def action_batch(self) -> None:
+        self.app.push_screen(BatchScreen())
+
+class BatchScreen(Screen):
+    BINDINGS = [
+        ("escape", "back", "Back"),
+        ("enter", "generate", "Generate"),
+        ("ctrl+y", "copy_all", "Copy All"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(classes="minimal-container"):
+            yield Label("BATCH MODE", classes="title")
+            yield Label("Comma-separated mutation sets", classes="subtitle")
+            yield Input(
+                placeholder="e.g. L234A/L235A, M428L/N434S, N297A",
+                id="input-batch",
+                max_length=500,
+                restrict=r"^[a-zA-Z0-9/, ]*\Z",
+            )
+            yield Button("Generate All", variant="primary", id="btn-batch-gen")
+            yield Log(id="batch-box")
+            yield Static("[dim]Enter: Generate | Ctrl+Y: Copy All | Esc: Back[/]", id="batch-help")
+        yield Footer()
+
+    def action_generate(self) -> None:
+        self.app.batch_results = []  # SECURITY: Reset previous batch state first
+
+        isotype = self.app.selected_isotype
+        allotype = self.app.selected_allotype
+        batch_box = self.query_one("#batch-box", Log)
+        batch_box.clear()
+
+        try:
+            iso_data = SEQUENCES.get(isotype, {})
+            if not isinstance(iso_data, dict):
+                iso_data = {}
+            base_seq = iso_data.get(allotype, "")
+            if not isinstance(base_seq, str) or not base_seq:
+                batch_box.write(f"[bold red]Error: Base sequence for {escape(isotype)} {escape(allotype)} not found.[/]")
+                return
+
+            raw_value = self.query_one("#input-batch", Input).value
+            # Security Enhancement: Secondary sanitization behind the Input widget's restrict regex
+            raw_value = re.sub(r"[^a-zA-Z0-9/, ]", "", raw_value)
+
+            results = generate_batch(base_seq, raw_value, isotype)
+            if not results:
+                batch_box.write("[yellow]No batch combinations provided.[/]")
+                return
+            if len(results) == 1 and results[0][0] == "" and results[0][2]:
+                # Bounds violation reported by core logic
+                for err in results[0][2]:
+                    batch_box.write(f"[red]• {escape(err)}[/]")
+                return
+
+            success_count = 0
+            for combo, seq_out, errors in results:
+                display_muts = combo.replace("/", "_")
+                header = f"{isotype.upper()}_{allotype.capitalize()}_{display_muts}"
+                batch_box.write(escape(f">{header}\n{seq_out}"))
+                if errors:
+                    for err in errors:
+                        batch_box.write(f"[red]• {escape(combo)}: {escape(err)}[/]")
+                else:
+                    success_count += 1
+                    self.app.batch_results.append((header, seq_out))
+                batch_box.write("")
+            self.log.info(f"Audit: Batch generated {success_count} sequences for {isotype} {allotype}.")
+        except Exception as e:
+            batch_box.write("[bold red]An unexpected error occurred during batch generation.[/]")
+            log_sanitized_error(self.log, "Error in BatchScreen.action_generate", e)
+
+    def action_copy_all(self) -> None:
+        if not getattr(self.app, "batch_results", []):
+            self.notify("Nothing to copy. Generate a batch first.", severity="warning")
+            return
+        joined = "\n\n".join(f">{h}\n{s}" for h, s in self.app.batch_results)
+        self.app.copy_text_secure(joined, f"{len(self.app.batch_results)} FASTA sequences")
+
+    def action_back(self) -> None:
+        # SECURITY: Wipe sensitive batch state on backward navigation
+        try:
+            if hasattr(self.app, "_clipboard_timer") and self.app._clipboard_timer is not None:
+                self.app._clipboard_timer.stop()
+                self.app._clipboard_timer = None
+            if hasattr(self.app, "copied_fasta") and self.app.copied_fasta:
+                self.app.clear_clipboard(self.app.copied_fasta)
+        finally:
+            self.app.batch_results = []
+            self.app.pop_screen()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-batch-gen": self.action_generate()
+
 
 class ResultScreen(Screen):
     BINDINGS = [
@@ -262,7 +359,7 @@ class ResultScreen(Screen):
 
     def action_copy_to_clipboard(self) -> None:
         last_fasta = self.app.last_fasta if hasattr(self.app, "last_fasta") else ""
-        self._copy_text(last_fasta, "FASTA sequence")
+        self.app.copy_text_secure(last_fasta, "FASTA sequence")
 
     def _current_export_state(self) -> Tuple[str, str, str, str]:
         """Return (header, base_seq, mut_seq, mutations) derived from current app state."""
@@ -287,7 +384,7 @@ class ResultScreen(Screen):
         if not record:
             self.notify("Failed to build GenBank record.", severity="error")
             return
-        self._copy_text(record, "GenBank record")
+        self.app.copy_text_secure(record, "GenBank record")
 
     def action_copy_csv(self) -> None:
         header, base_seq, mut_seq, mutations = self._current_export_state()
@@ -302,30 +399,7 @@ class ResultScreen(Screen):
         if not report:
             self.notify("Failed to build CSV report.", severity="error")
             return
-        self._copy_text(report, f"CSV report ({header})")
-
-    def _copy_text(self, text: str, notify_label: str) -> None:
-        """Copy text to the OS clipboard under the auto-clear security policy."""
-        # SECURITY: Clear any previous clipboard state before copying new data
-        if hasattr(self.app, "copied_fasta") and self.app.copied_fasta:
-            self.app.clear_clipboard(self.app.copied_fasta)
-        self.app.copied_fasta = ""  # SECURITY: Clear state before copying
-        if not text:
-            return
-        try:
-            pyperclip.copy(text)
-            self.app.copied_fasta = text
-            # SECURITY: Audit log for sensitive intellectual property operation (Data Export to OS)
-            self.log.info("Audit: Copied proprietary sequence data to OS clipboard.")
-            self.notify(f"{notify_label} copied! (Will auto-clear in 30s)")
-            # Security: Auto-clear clipboard after 30 seconds
-            # Ensure overlapping timers are cancelled so the timer doesn't prematurely clear a newly copied item
-            if hasattr(self.app, "_clipboard_timer") and self.app._clipboard_timer is not None:
-                self.app._clipboard_timer.stop()
-            self.app._clipboard_timer = self.app.set_timer(30, functools.partial(self.app.clear_clipboard, self.app.copied_fasta))
-        except Exception as e:
-            log_sanitized_error(self.log, f"Error copying to clipboard", e)
-            self.notify("Error copying to clipboard. See logs.", severity="error")
+        self.app.copy_text_secure(report, f"CSV report ({header})")
 
     def action_quit_to_main(self) -> None:
         # SECURITY: Wipe sensitive state upon returning to main menu
@@ -341,6 +415,7 @@ class ResultScreen(Screen):
             self.app.all_mutants = ""
             self.app.last_fasta = ""
             self.app.copied_fasta = ""
+            self.app.batch_results = []
             while len(self.app.screen_stack) > 1:
                 self.app.pop_screen()
 
@@ -447,6 +522,26 @@ class MutantApp(App):
         margin-bottom: 1;
     }
 
+    #input-batch {
+        margin-bottom: 1;
+    }
+
+    #btn-batch-gen {
+        width: 100%;
+        margin-bottom: 1;
+    }
+
+    #batch-box {
+        height: 16;
+        border: solid $accent;
+        margin-bottom: 1;
+    }
+
+    #batch-help {
+        text-align: center;
+        width: 100%;
+    }
+
     #btn-gen {
         width: 100%;
     }
@@ -470,6 +565,7 @@ class MutantApp(App):
         self.all_mutants = ""
         self.last_fasta = ""
         self.copied_fasta = ""
+        self.batch_results = []
         self.push_screen(WelcomeScreen())
 
     def on_unmount(self) -> None:
@@ -495,6 +591,33 @@ class MutantApp(App):
         finally:
             if hasattr(self, "copied_fasta"):
                 self.copied_fasta = ""
+
+    def copy_text_secure(self, text: str, notify_label: str = "Sequence") -> None:
+        """Copy text to the OS clipboard under the auto-clear security policy.
+
+        Lives on the persistent App (not on ephemeral screens) so the auto-clear
+        timer and teardown hooks always remain in control of the copied data.
+        """
+        # SECURITY: Clear any previous clipboard state before copying new data
+        if hasattr(self, "copied_fasta") and self.copied_fasta:
+            self.clear_clipboard(self.copied_fasta)
+        self.copied_fasta = ""  # SECURITY: Clear state before copying
+        if not text:
+            return
+        try:
+            pyperclip.copy(text)
+            self.copied_fasta = text
+            # SECURITY: Audit log for sensitive intellectual property operation (Data Export to OS)
+            self.log.info("Audit: Copied proprietary sequence data to OS clipboard.")
+            self.notify(f"{notify_label} copied! (Will auto-clear in 30s)")
+            # Security: Auto-clear clipboard after 30 seconds
+            # Ensure overlapping timers are cancelled so the timer doesn't prematurely clear a newly copied item
+            if hasattr(self, "_clipboard_timer") and self._clipboard_timer is not None:
+                self._clipboard_timer.stop()
+            self._clipboard_timer = self.set_timer(30, functools.partial(self.clear_clipboard, self.copied_fasta))
+        except Exception as e:
+            log_sanitized_error(self.log, "Error copying to clipboard", e)
+            self.notify("Error copying to clipboard. See logs.", severity="error")
 
 
 def main():

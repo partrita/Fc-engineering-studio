@@ -90,3 +90,35 @@ def apply_mutations(sequence: str, mutants_str: str, isotype: str) -> Tuple[str,
             seq_list[index] = mut_aa
         except ValueError: errors.append(f"Format error: Invalid mutation '{m}'.")
     return "".join(seq_list), errors
+
+# --- Batch Generation ---
+
+MAX_BATCH_ITEMS = 20
+MAX_BATCH_LENGTH = 2000
+
+def generate_batch(base_seq: str, batch_str: str, isotype: str) -> List[Tuple[str, str, List[str]]]:
+    """Generate multiple sequences from a comma-separated list of mutation sets.
+
+    Each comma-separated entry is one combination (it may itself contain
+    slash-joined mutations). Returns a list of (combo, sequence, errors) tuples.
+    """
+    if not isinstance(batch_str, str) or not batch_str.strip():
+        return []
+
+    # SECURITY: Defense-in-depth bounds on batch input size and character set
+    if len(batch_str) > MAX_BATCH_LENGTH:
+        return [("", base_seq, [f"Error: Batch input exceeds maximum length of {MAX_BATCH_LENGTH} characters."])]
+    if re.search(r"[^a-zA-Z0-9/, ]", batch_str):
+        return [("", base_seq, ["Error: Batch input contains invalid characters."])]
+
+    combos = [c.strip() for c in batch_str.split(",") if c.strip()]
+    if not combos:
+        return []
+    if len(combos) > MAX_BATCH_ITEMS:
+        return [("", base_seq, [f"Error: Maximum of {MAX_BATCH_ITEMS} batch combinations allowed."])]
+
+    results: List[Tuple[str, str, List[str]]] = []
+    for combo in combos:
+        seq_out, errors = apply_mutations(base_seq, combo, isotype)
+        results.append((combo, seq_out, errors))
+    return results

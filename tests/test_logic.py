@@ -5,6 +5,7 @@ from fc_engineer.core import (
     parse_mutation,
     apply_mutations,
     diff_sequences,
+    generate_batch,
 )
 from fc_engineer.config import SEQUENCES, COMMON_MUTATIONS
 
@@ -97,6 +98,50 @@ def test_diff_sequences_igg3():
 def test_diff_sequences_no_change():
     seq = SEQUENCES["igg1"]["WT(P01857-1)"]
     assert diff_sequences(seq, seq, "igg1") == []
+
+# --- Batch generation ---
+
+def test_generate_batch_basic():
+    seq = SEQUENCES["igg1"]["WT(P01857-1)"]
+    results = generate_batch(seq, "L234A/L235A, N297A", "igg1")
+    assert len(results) == 2
+    combo1, seq1, err1 = results[0]
+    assert combo1 == "L234A/L235A" and not err1
+    assert seq1[116:118] == "AA"
+    combo2, seq2, err2 = results[1]
+    assert combo2 == "N297A" and not err2
+    idx297 = get_residue_index(297, "igg1")
+    assert seq2[idx297] == "A"
+
+def test_generate_batch_empty_returns_nothing():
+    seq = "ASTK"
+    assert generate_batch(seq, "", "igg1") == []
+    assert generate_batch(seq, " , , ", "igg1") == []
+
+def test_generate_batch_invalid_chars():
+    seq = "ASTK"
+    _, _, errors = generate_batch(seq, "A118X; rm -rf", "igg1")[0]
+    assert any("invalid characters" in e for e in errors)
+
+def test_generate_batch_too_many_items():
+    seq = SEQUENCES["igg1"]["WT(P01857-1)"]
+    batch_str = ",".join(["L234A"] * 21)
+    results = generate_batch(seq, batch_str, "igg1")
+    assert len(results) == 1
+    assert "Maximum of 20 batch combinations allowed." in results[0][2][0]
+
+def test_generate_batch_length_limit():
+    seq = SEQUENCES["igg1"]["WT(P01857-1)"]
+    results = generate_batch(seq, "A118X," * 400, "igg1")  # > 2000 chars
+    assert len(results) == 1
+    assert "exceeds maximum length of 2000" in results[0][2][0]
+
+def test_generate_batch_propagates_per_item_errors():
+    seq = SEQUENCES["igg1"]["WT(P01857-1)"]
+    results = generate_batch(seq, "N297A, C118X", "igg1")
+    # 두 번째 조합은 WT 불일치 오류를 포함하되 전체 배치는 계속 진행되어야 함
+    assert not results[0][2]
+    assert any("Expected 'C'" in e for e in results[1][2])
 
 def test_parse_mutation():
     assert parse_mutation("S228P") == ("S", 228, "P")
