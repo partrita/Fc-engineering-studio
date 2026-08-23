@@ -22,7 +22,7 @@ import pyperclip
 from rich.markup import escape
 
 from fc_engineer.config import SEQUENCES, COMMON_MUTATIONS, log_sanitized_error
-from fc_engineer.core import apply_mutations
+from fc_engineer.core import apply_mutations, diff_sequences
 
 ANTIBODY_ASCII = r"""
   _____                                                 
@@ -241,6 +241,15 @@ class ResultScreen(Screen):
             # SECURITY: Escape user-provided sequence/header data to prevent Rich markup injection
             result_box.write(escape(fasta))
             self.app.last_fasta = fasta
+
+            # Sequence comparison view: per-position diff against WT (EU Numbering)
+            diffs = diff_sequences(base_seq, mutant_seq, isotype)
+            if diffs:
+                result_box.write("")
+                result_box.write(f"[bold]Mutations vs WT ({len(diffs)}):[/]")
+                for pos, wt_aa, mut_aa in diffs:
+                    result_box.write(f"[yellow]• {escape(wt_aa)}{pos}{escape(mut_aa)}[/]")
+
             # SECURITY: Audit log for sensitive intellectual property operation (Sequence Generation)
             self.log.info(f"Audit: Generated FASTA sequence for {isotype} {allotype} with mutations {display_muts}")
         except Exception as e:

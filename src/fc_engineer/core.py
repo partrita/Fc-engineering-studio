@@ -24,6 +24,27 @@ def get_residue_index(pos: int, isotype: str) -> Optional[int]:
         else: return pos - EU_START + IGG3_HINGE_EXTRA
     return None
 
+def get_eu_position(index: int, isotype: str) -> Optional[int]:
+    """Inverse of get_residue_index: maps a 0-based sequence index back to the EU position."""
+    if isotype == "igg1": return index + EU_START
+    elif isotype in ["igg2", "igg4"]:
+        if index <= 104: return index + EU_START
+        else: return index + EU_START + 3
+    elif isotype == "igg3":
+        if index <= 104: return index + EU_START
+        else: return index + EU_START - IGG3_HINGE_EXTRA
+    return None
+
+def diff_sequences(wt_seq: str, mut_seq: str, isotype: str) -> List[Tuple[int, str, str]]:
+    """Compare WT vs mutant sequence and return (EU position, WT aa, mutant aa) tuples."""
+    diffs: List[Tuple[int, str, str]] = []
+    for idx, (wt_aa, mut_aa) in enumerate(zip(wt_seq, mut_seq)):
+        if wt_aa != mut_aa:
+            pos = get_eu_position(idx, isotype)
+            if pos is not None:
+                diffs.append((pos, wt_aa, mut_aa))
+    return diffs
+
 def parse_mutation(m_str: str) -> Tuple[str, int, str]:
     if len(m_str) > 10:
         raise ValueError(f"Mutation string too long (max 10): {len(m_str)}")

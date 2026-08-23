@@ -1,5 +1,11 @@
 import pytest
-from fc_engineer.core import get_residue_index, parse_mutation, apply_mutations
+from fc_engineer.core import (
+    get_residue_index,
+    get_eu_position,
+    parse_mutation,
+    apply_mutations,
+    diff_sequences,
+)
 from fc_engineer.config import SEQUENCES, COMMON_MUTATIONS
 
 # 로드맵: developability / PTM 관련 신규 프리셋
@@ -64,6 +70,33 @@ def test_all_preset_values_are_parseable():
             wt_aa, pos, mut_aa = parse_mutation(m)  # ValueError 발생 시 실패
             assert wt_aa in "ACDEFGHIKLMNPQRSTVWY"
             assert mut_aa in "ACDEFGHIKLMNPQRSTVWY"
+
+@pytest.mark.parametrize("iso", ["igg1", "igg2", "igg4", "igg3"])
+def test_get_eu_position_roundtrip(iso):
+    # 인덱스 <-> EU 위치 역변환이 각 Isotype에서 일관되어야 함
+    for pos in [118, 150, 200, 222]:
+        assert get_eu_position(get_residue_index(pos, iso), iso) == pos
+
+def test_get_eu_position_after_gap():
+    # Gap 이후 구간의 역변환 (IgG2: 226 -> idx 105, IgG3: 231 -> idx 160)
+    assert get_eu_position(105, "igg2") == 226
+    assert get_eu_position(160, "igg3") == 231
+    assert get_eu_position(376, "igg3") == 447
+
+def test_diff_sequences_igg1():
+    seq = SEQUENCES["igg1"]["WT(P01857-1)"]
+    mut, _ = apply_mutations(seq, "L234A/L235A/N297A", "igg1")
+    diffs = diff_sequences(seq, mut, "igg1")
+    assert diffs == [(234, "L", "A"), (235, "L", "A"), (297, "N", "A")]
+
+def test_diff_sequences_igg3():
+    seq = SEQUENCES["igg3"]["WT(P01860-1)"]
+    mut, _ = apply_mutations(seq, "N297A", "igg3")
+    assert diff_sequences(seq, mut, "igg3") == [(297, "N", "A")]
+
+def test_diff_sequences_no_change():
+    seq = SEQUENCES["igg1"]["WT(P01857-1)"]
+    assert diff_sequences(seq, seq, "igg1") == []
 
 def test_parse_mutation():
     assert parse_mutation("S228P") == ("S", 228, "P")
