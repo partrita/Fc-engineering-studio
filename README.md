@@ -42,7 +42,10 @@ uv run pytest
 
 ### 단축키 (Shortcuts)
 - `Enter`: 서열 생성 (Generate)
-- `Ctrl + Y`: 결과 서열 클립보드 복사 (Copy)
+- `B`: 배치 모드 열기 (Mutation 화면에서)
+- `Ctrl + Y`: 결과 서열 클립보드 복사 (Copy / Copy All)
+- `Ctrl + G`: GenBank 형식으로 클립보드 복사
+- `Ctrl + R`: CSV 리포트로 클립보드 복사
 - `Ctrl + C`: 프로그램 종료 (Quit)
 
 ## 프로젝트 구조
@@ -52,8 +55,9 @@ src/fc_engineer/
 ├── __init__.py          # 패키지 메타데이터
 ├── __main__.py          # python -m fc_engineer 진입점
 ├── app.py               # TUI 화면 및 MutantApp
-├── core.py              # EU Numbering 계산, 변이 파싱/적용 로직
+├── core.py              # EU Numbering 계산, 변이 파싱/적용, diff·배치·developability 로직
 ├── config.py            # YAML 데이터 로딩 및 검증
+├── exporters.py         # GenBank / CSV 내보내기 포맷터
 └── data/
     ├── sequences.yaml   # Isotype별 베이스 서열 데이터
     └── mutants.yaml     # 주요 변이 프리셋 데이터
@@ -67,9 +71,9 @@ pyproject.toml           # 프로젝트 설정 및 의존성 정의
 
 ## 로드맵 (Roadmap)
 
-- [ ] **IgG3 Isotype 추가**: IgG1, IgG2, IgG4에 이어 IgG3 베이스 서열 및 Allotype 지원
-- [ ] **변이 프리셋 확장**: 최신 문헌 기반의 developability 관련 변이(PTM hotspot 제거 등) 프리셋 추가
-- [ ] **서열 비교 뷰**: WT 대비 변이 서열의 위치별 diff 하이라이팅 (EU Numbering 기준)
-- [ ] **다양한 출력 포맷**: FASTA 외에 GenBank, CSV 리포트 등 내보내기 지원
-- [ ] **배치(Batch) 처리**: 여러 변이 조합을 일괄 생성하는 모드
-- [ ] **Developability 지표 요약**: glycosylation site(N297), charge 이슈, FcγR binding hotspot 주석 표시
+- [x] **IgG3 Isotype 추가**: IgG1, IgG2, IgG4에 이어 IgG3 베이스 서열 및 Allotype 지원 (확장 힌지 정렬 포함)
+- [x] **변이 프리셋 확장**: 최신 문헌 기반의 developability 관련 변이(PTM hotspot 제거 등) 프리셋 추가
+- [x] **서열 비교 뷰**: WT 대비 변이 서열의 위치별 diff 하이라이팅 (EU Numbering 기준)
+- [x] **다양한 출력 포맷**: FASTA 외에 GenBank, CSV 리포트 등 내보내기 지원
+- [x] **배치(Batch) 처리**: 여러 변이 조합을 일괄 생성하는 모드
+- [x] **Developability 지표 요약**: glycosylation site(N297), charge 이슈, FcγR binding hotspot 주석 표시
