@@ -1,5 +1,6 @@
 import re
 import functools
+from typing import Tuple
 from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Vertical, Horizontal
@@ -23,6 +24,7 @@ from rich.markup import escape
 
 from fc_engineer.config import SEQUENCES, COMMON_MUTATIONS, log_sanitized_error
 from fc_engineer.core import apply_mutations, diff_sequences
+from fc_engineer.exporters import format_genbank, format_csv_report
 
 ANTIBODY_ASCII = r"""
   _____                                                 
@@ -189,6 +191,8 @@ class ResultScreen(Screen):
     BINDINGS = [
         ("escape", "back", "Back"),
         ("ctrl+y", "copy_to_clipboard", "Copy"),
+        ("ctrl+g", "copy_genbank", "Copy GB"),
+        ("ctrl+r", "copy_csv", "Copy CSV"),
         ("q", "quit_to_main", "Main Menu")
     ]
 
@@ -198,7 +202,7 @@ class ResultScreen(Screen):
             yield Label("RESULT", classes="title")
             yield Label("FASTA Sequence", classes="subtitle")
             yield Log(id="result-box")
-            yield Static("[dim]Ctrl+Y: Copy | Esc: Back | Q: Menu[/]", id="result-help")
+            yield Static("[dim]Ctrl+Y: FASTA | Ctrl+G: GenBank | Ctrl+R: CSV | Esc: Back | Q: Menu[/]", id="result-help")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -257,24 +261,71 @@ class ResultScreen(Screen):
             log_sanitized_error(self.log, f"Error in generate_fasta", e)
 
     def action_copy_to_clipboard(self) -> None:
+        last_fasta = self.app.last_fasta if hasattr(self.app, "last_fasta") else ""
+        self._copy_text(last_fasta, "FASTA sequence")
+
+    def _current_export_state(self) -> Tuple[str, str, str, str]:
+        """Return (header, base_seq, mut_seq, mutations) derived from current app state."""
+        header, _, mut_seq = (self.app.last_fasta or "").partition("\n")
+        header = header.lstrip(">")
+        isotype = getattr(self.app, "selected_isotype", "")
+        allotype = getattr(self.app, "selected_allotype", "")
+        mutations = getattr(self.app, "all_mutants", "")
+        base_seq = ""
+        iso_data = SEQUENCES.get(isotype, {})
+        if isinstance(iso_data, dict):
+            candidate = iso_data.get(allotype, "")
+            base_seq = candidate if isinstance(candidate, str) else ""
+        return header, base_seq, mut_seq, mutations
+
+    def action_copy_genbank(self) -> None:
+        header, _, mut_seq, _ = self._current_export_state()
+        if not mut_seq:
+            self.notify("Nothing to export.", severity="warning")
+            return
+        record = format_genbank(header, mut_seq, definition=header)
+        if not record:
+            self.notify("Failed to build GenBank record.", severity="error")
+            return
+        self._copy_text(record, "GenBank record")
+
+    def action_copy_csv(self) -> None:
+        header, base_seq, mut_seq, mutations = self._current_export_state()
+        if not mut_seq:
+            self.notify("Nothing to export.", severity="warning")
+            return
+        report = format_csv_report(
+            getattr(self.app, "selected_isotype", ""),
+            getattr(self.app, "selected_allotype", ""),
+            mutations, base_seq, mut_seq,
+        )
+        if not report:
+            self.notify("Failed to build CSV report.", severity="error")
+            return
+        self._copy_text(report, f"CSV report ({header})")
+
+    def _copy_text(self, text: str, notify_label: str) -> None:
+        """Copy text to the OS clipboard under the auto-clear security policy."""
+        # SECURITY: Clear any previous clipboard state before copying new data
         if hasattr(self.app, "copied_fasta") and self.app.copied_fasta:
             self.app.clear_clipboard(self.app.copied_fasta)
         self.app.copied_fasta = ""  # SECURITY: Clear state before copying
-        if hasattr(self.app, "last_fasta") and self.app.last_fasta:
-            try:
-                pyperclip.copy(self.app.last_fasta)
-                self.app.copied_fasta = self.app.last_fasta
-                # SECURITY: Audit log for sensitive intellectual property operation (Data Export to OS)
-                self.log.info("Audit: Copied proprietary FASTA sequence to OS clipboard.")
-                self.notify("FASTA sequence copied! (Will auto-clear in 30s)")
-                # Security: Auto-clear clipboard after 30 seconds
-                # Ensure overlapping timers are cancelled so the timer doesn't prematurely clear a newly copied item
-                if hasattr(self.app, "_clipboard_timer") and self.app._clipboard_timer is not None:
-                    self.app._clipboard_timer.stop()
-                self.app._clipboard_timer = self.app.set_timer(30, functools.partial(self.app.clear_clipboard, self.app.copied_fasta))
-            except Exception as e:
-                log_sanitized_error(self.log, f"Error copying to clipboard", e)
-                self.notify("Error copying to clipboard. See logs.", severity="error")
+        if not text:
+            return
+        try:
+            pyperclip.copy(text)
+            self.app.copied_fasta = text
+            # SECURITY: Audit log for sensitive intellectual property operation (Data Export to OS)
+            self.log.info("Audit: Copied proprietary sequence data to OS clipboard.")
+            self.notify(f"{notify_label} copied! (Will auto-clear in 30s)")
+            # Security: Auto-clear clipboard after 30 seconds
+            # Ensure overlapping timers are cancelled so the timer doesn't prematurely clear a newly copied item
+            if hasattr(self.app, "_clipboard_timer") and self.app._clipboard_timer is not None:
+                self.app._clipboard_timer.stop()
+            self.app._clipboard_timer = self.app.set_timer(30, functools.partial(self.app.clear_clipboard, self.app.copied_fasta))
+        except Exception as e:
+            log_sanitized_error(self.log, f"Error copying to clipboard", e)
+            self.notify("Error copying to clipboard. See logs.", severity="error")
 
     def action_quit_to_main(self) -> None:
         # SECURITY: Wipe sensitive state upon returning to main menu
