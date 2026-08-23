@@ -64,3 +64,12 @@ pyproject.toml           # 프로젝트 설정 및 의존성 정의
 ## 데이터 커스터마이징
 
 새로운 베이스 서열이나 변이 프리셋을 추가하려면 `src/fc_engineer/data/sequences.yaml` 또는 `src/fc_engineer/data/mutants.yaml` 파일을 수정하십시오. 프로그램 실행 시 해당 파일들을 자동으로 로드합니다.
+
+## 로드맵 (Roadmap)
+
+- [ ] **IgG3 Isotype 추가**: IgG1, IgG2, IgG4에 이어 IgG3 베이스 서열 및 Allotype 지원
+- [ ] **변이 프리셋 확장**: 최신 문헌 기반의 developability 관련 변이(PTM hotspot 제거 등) 프리셋 추가
+- [ ] **서열 비교 뷰**: WT 대비 변이 서열의 위치별 diff 하이라이팅 (EU Numbering 기준)
+- [ ] **다양한 출력 포맷**: FASTA 외에 GenBank, CSV 리포트 등 내보내기 지원
+- [ ] **배치(Batch) 처리**: 여러 변이 조합을 일괄 생성하는 모드
+- [ ] **Developability 지표 요약**: glycosylation site(N297), charge 이슈, FcγR binding hotspot 주석 표시
