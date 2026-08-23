@@ -1,5 +1,6 @@
 import pytest
 from fc_engineer.core import get_residue_index, parse_mutation, apply_mutations
+from fc_engineer.config import SEQUENCES
 
 def test_get_residue_index_igg1():
     # IgG1은 EU 118부터 연속적임
@@ -14,6 +15,26 @@ def test_get_residue_index_igg2_gaps():
     assert get_residue_index(224, "igg2") is None
     assert get_residue_index(225, "igg2") is None
     assert get_residue_index(226, "igg2") == 105  # 104 다음은 105 (3개 점프)
+
+def test_get_residue_index_igg3():
+    # IgG3는 확장 힌지 보유: 222까지 정방향, 223-230은 Gap, 231+는 CH2/CH3 정렬(+47)
+    assert get_residue_index(118, "igg3") == 0
+    assert get_residue_index(222, "igg3") == 104
+    for pos in range(223, 231):
+        assert get_residue_index(pos, "igg3") is None
+    assert get_residue_index(231, "igg3") == 160  # APELL 시작 위치와 일치
+    assert get_residue_index(297, "igg3") == 226  # N297 글리코실화 부위
+    assert get_residue_index(447, "igg3") == 376  # C-말단 (len=377, 마지막 인덱스)
+
+def test_apply_mutations_igg3():
+    seq = SEQUENCES.get("igg3", {}).get("WT(P01860-1)", "")
+    assert len(seq) == 377  # IgG1(330) 대비 힌지 +47
+    # N297A (Aglycosylation) 적용 검증
+    result, errors = apply_mutations(seq, "N297A", "igg3")
+    assert not errors
+    idx = get_residue_index(297, "igg3")
+    assert seq[idx] == "N"
+    assert result[idx] == "A"
 
 def test_parse_mutation():
     assert parse_mutation("S228P") == ("S", 228, "P")

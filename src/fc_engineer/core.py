@@ -5,12 +5,23 @@ from typing import List, Optional, Tuple
 
 EU_START = 118
 
+# IgG3 carries an extended hinge with tandem repeats relative to IgG1 (+47 residues
+# for the bundled WT(P01860-1) entry). EU positions 223-230 fall inside the repeated
+# region where unique numbering is undefined, while CH2-CH3 (EU 231-447) aligns to
+# the conserved C-terminal segment.
+IGG3_HINGE_EXTRA = 47
+IGG3_GAP_END = 230
+
 def get_residue_index(pos: int, isotype: str) -> Optional[int]:
     if isotype == "igg1": return pos - EU_START
     elif isotype in ["igg2", "igg4"]:
         if pos <= 222: return pos - EU_START
         elif 223 <= pos <= 225: return None
         else: return pos - EU_START - 3
+    elif isotype == "igg3":
+        if pos <= 222: return pos - EU_START
+        elif pos <= IGG3_GAP_END: return None
+        else: return pos - EU_START + IGG3_HINGE_EXTRA
     return None
 
 def parse_mutation(m_str: str) -> Tuple[str, int, str]:
