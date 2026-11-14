@@ -1,3 +1,3 @@
-"""Fc Engineering Studio - Design human IgG Fc variant sequences based on EU Numbering."""
+"""Fc Engineering Studio - Flet-based visual antibody & Fc engineering desktop application."""
 
-__version__ = "0.1.0"
+__version__ = "0.0.1"

@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python 3.14
+        run: uv python install 3.14
+
+      - name: Install dependencies (locked)
+        run: uv sync --locked
+
+      - name: Verify tag matches package version
+        run: |
+          uv run python - <<'EOF'
+          import os
+          import tomllib
+          from pathlib import Path
+          import fc_engineer
+
+          tag_name = os.environ["GITHUB_REF_NAME"]
+          if not tag_name.startswith("v"):
+              raise SystemExit(f"Expected tag starting with 'v', got {tag_name!r}")
+
+          tag_version = tag_name.removeprefix("v")
+          with Path("pyproject.toml").open("rb") as f:
+              project_version = tomllib.load(f)["project"]["version"]
+          pkg_version = fc_engineer.__version__
+
+          assert tag_version == project_version == pkg_version, (
+              f"Version mismatch: tag={tag_name!r}, pyproject={project_version!r}, __init__={pkg_version!r}"
+          )
+          print(f"Verified version parity: {tag_name} == {project_version} == {pkg_version}")
+          EOF
+
+      - name: Run Bandit security scan
+        run: uv run bandit -r src/
+
+      - name: Run test suite
+        run: uv run pytest
+
+      - name: Build distribution artifacts
+        run: |
+          rm -rf dist
+          uv build
+
+      - name: Generate SHA-256 checksums
+        run: (cd dist && sha256sum *.whl *.tar.gz > SHA256SUMS.txt)
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: dist/*
