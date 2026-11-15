@@ -31,34 +31,35 @@ flowchart TD
 ## Interface
 
 * **CLI Script & Module Entry Points:**
-  * `[pyproject.toml:fc-engineer]` -> `[src/fc_engineer/app.py:main]` (`ft.run(...)`)
-  * `[src/fc_engineer/__main__.py]` (`if __name__ == "__main__": main()`)
-  * `[src/fc_engineer/__init__.py:__version__]` (`"0.0.1"`)
-* **Flet Desktop GUI & Controller (`[src/fc_engineer/app.py]`):**
-  * `[src/fc_engineer/app.py:AntibodyStudioController]`, `[src/fc_engineer/app.py:build_studio_ui]`, `[src/fc_engineer/app.py:main]`
-* **Domain Assembly & Scene Model (`[src/fc_engineer/designer.py]`):**
+  * [`pyproject.toml:fc-engineer`](./pyproject.toml) -> [`src/fc_engineer/app.py:main`](./src/fc_engineer/app.py) (`ft.run(...)`)
+  * [`src/fc_engineer/__main__.py`](./src/fc_engineer/__main__.py) (`if __name__ == "__main__": main()`)
+  * [`src/fc_engineer/__init__.py:__version__`](./src/fc_engineer/__init__.py) (`"0.0.1"`)
+* **Flet Desktop GUI & Controller ([`src/fc_engineer/app.py`](./src/fc_engineer/app.py)):**
+  * [`src/fc_engineer/app.py:AntibodyStudioController`](./src/fc_engineer/app.py), [`src/fc_engineer/app.py:build_studio_ui`](./src/fc_engineer/app.py), [`src/fc_engineer/app.py:main`](./src/fc_engineer/app.py)
+* **Domain Assembly & Scene Model ([`src/fc_engineer/designer.py`](./src/fc_engineer/designer.py)):**
+  * Constants: `MAX_CHAINS`, `MAX_DOMAINS_PER_CHAIN`, `MAX_PAIRINGS`, `MAX_FILE_CUSTOM_MUTATIONS`, `MAX_CUSTOM_SEQ_LENGTH`, `MAX_EXPORT_SEQUENCE_LENGTH`, `MAX_METADATA_LENGTH`, `MAX_HISTORY_ENTRIES`, `MAX_COORD`, `SCENE_PADDING`, `VALID_DOMAIN_TYPES`, `NON_CONSTANT_DOMAIN_TYPES`, `VALID_PAIRING_TYPES`, `VALID_FORMAT_TYPES`, `ALLOWED_TEMPLATE_KEYS_BY_TYPE`, `DEFAULT_TEMPLATE_KEYS`, `DOMAIN_STYLE_MAP`
   * Dataclasses: `DomainBlock`, `PolypeptideChain`, `InterChainPairing`, `AntibodyProject`, `SchematicNode`, `SchematicEdge`, `SchematicPairingEdge`, `SchematicScene`
-  * Key functions: `build_format_template`, `build_preset_map`, `resolve_domain_base_sequence`, `resolve_domain_sequence`, `assemble_chain_sequence`, `route_mutations_to_chain`, `remove_preset_from_chain`, `remove_domain_from_chain`, `remove_chain_from_project`, `diff_chain_sequences`, `analyze_chain_developability`, `add_file_custom_mutation`, `reflow_chain_coordinates`, `build_schematic_scene`
-* **Core Sequence & EU Numbering API (`[src/fc_engineer/core.py]`):**
+  * Key functions: `build_format_template`, `build_preset_map`, `get_effective_domain_mutations`, `resolve_domain_base_sequence`, `resolve_domain_sequence`, `assemble_chain_sequence`, `route_mutations_to_chain`, `remove_preset_from_chain`, `remove_domain_from_chain`, `remove_chain_from_project`, `diff_chain_sequences`, `analyze_chain_developability`, `add_file_custom_mutation`, `reflow_chain_coordinates`, `build_schematic_scene`
+* **Core Sequence & EU Numbering API ([`src/fc_engineer/core.py`](./src/fc_engineer/core.py)):**
   * Constants: `EU_START` (`118`), `IGG3_HINGE_EXTRA` (`47`), `IGG3_GAP_END` (`230`), `CONSTANT_DOMAIN_EU_RANGES`, `MAX_MUTATION_STRING_LENGTH` (`1000`), `MAX_MUTATIONS` (`50`), `MAX_BATCH_ITEMS` (`20`), `MAX_BATCH_LENGTH` (`2000`)
   * Functions: `get_residue_index`, `get_eu_position`, `get_domain_slice_bounds`, `slice_constant_domain`, `get_domain_residue_index`, `get_domain_eu_position`, `diff_sequences`, `parse_mutation`, `parse_mutation_list`, `apply_mutations`, `apply_domain_mutations`, `generate_batch`, `analyze_developability`
-* **Configuration & Export Formatters (`[src/fc_engineer/config.py]`, `[src/fc_engineer/exporters.py]`):**
+* **Configuration & Export Formatters ([`src/fc_engineer/config.py`](./src/fc_engineer/config.py), [`src/fc_engineer/exporters.py`](./src/fc_engineer/exporters.py)):**
   * Config: `MAX_FILE_SIZE` (`1 MiB`), `NoAliasSafeLoader`, `load_yaml_data`, `load_domain_templates`, `log_sanitized_error`, `SEQUENCES`, `COMMON_MUTATIONS`, `VARIABLE_DOMAINS`, `LIGHT_CONSTANT_DOMAINS`, `DEFAULT_LINKERS`, `logger`
   * Exporters: `MAX_EXPORT_SEQUENCE_LENGTH` (`10000`), `MAX_METADATA_LENGTH` (`200`), `MAX_PNG_DIMENSION` (`8192`), `sanitize_locus`, `format_genbank`, `format_csv_report`, `format_project_fasta`, `save_fasta_file`, `serialize_ab_project`, `parse_ab_project`, `save_ab_file`, `load_ab_file`, `export_schematic_png`, `save_schematic_png`
 
 ## Invariants
 
-* **Safe YAML Loading (`[src/fc_engineer/config.py:NoAliasSafeLoader.compose_node]`, `[src/fc_engineer/config.py:load_yaml_data]`):** Rejects non-regular files via `os.path.isfile`, enforces `MAX_FILE_SIZE = 1 MiB` (`os.path.getsize` and bounded `f.read(MAX_FILE_SIZE + 1)`), blocks YAML `AliasEvent` bombs, caps nesting at `MAX_DEPTH = 50`, and validates exact schemas across `SEQUENCES`, `VARIABLE_DOMAINS`, `LIGHT_CONSTANT_DOMAINS`, `DEFAULT_LINKERS`, and `COMMON_MUTATIONS`.
-* **EU Alignment Across IgG1–IgG4 & Isolated Constant Domains (`[src/fc_engineer/core.py:get_residue_index]`, `[src/fc_engineer/core.py:get_eu_position]`, `[src/fc_engineer/core.py:get_domain_slice_bounds]`, `[src/fc_engineer/core.py:get_domain_eu_position]`):** Starts at `EU_START = 118`; maps IgG2/IgG4 hinge deletions `223..225` and IgG3 unmapped repeat hinge positions `223..230` (`IGG3_GAP_END`) to `None`; `get_eu_position` returns `None` for negative indices and IgG3 extended-hinge repeat indices `105..159`, while domain helpers map per-domain slices (`CH1`, `Hinge`, `CH2`, `CH3`) without N-terminal variable/linker shifts.
-* **Strict ASCII Validation, Atomic Routing & Persistence Bounds (`[src/fc_engineer/core.py:parse_mutation]`, `[src/fc_engineer/designer.py:route_mutations_to_chain]`, `[src/fc_engineer/exporters.py:parse_ab_project]`):** Enforces ASCII-only `[0-9]` regexes with `\Z` anchors (`len <= 10`), `[A-Z]+` base sequences, Phase 1 dry-run rollback before mutating any domain/chain, `.ab` 1 MiB file size limits, collection caps (`1..16` chains, `1..32` domains/chain, `<= 64` pairings, `<= 100` file custom mutations, `<= 50` `mutation_history` entries of `<= 200` chars), exact `ORIGIN == assembled_seq` parity, and `os.path.basename` path redaction on file I/O errors.
-* **Clipboard Auto-Clear Security (`[src/fc_engineer/app.py:AntibodyStudioController.copy_text_secure]`, `[src/fc_engineer/app.py:AntibodyStudioController.clear_clipboard]`, `[src/fc_engineer/app.py:AntibodyStudioController.shutdown]`):** Protects `copied_fasta`, `_clipboard_timer`, and monotonic `_clipboard_gen` under `threading.RLock`, wipes prior matching clipboard state before copying new payloads, schedules a daemon 30-second `threading.Timer`, clears only matching content with current generation token, and purges clipboard state on `.ab` load, format switch, window close, and `atexit`.
+* **Safe YAML Loading ([`src/fc_engineer/config.py:NoAliasSafeLoader.compose_node`](./src/fc_engineer/config.py), [`src/fc_engineer/config.py:load_yaml_data`](./src/fc_engineer/config.py)):** Rejects non-regular files via `os.path.isfile`, enforces `MAX_FILE_SIZE = 1 MiB` (`os.path.getsize` and bounded `f.read(MAX_FILE_SIZE + 1)`), blocks YAML `AliasEvent` bombs, caps nesting at `MAX_DEPTH = 50`, and validates exact schemas across `SEQUENCES`, `VARIABLE_DOMAINS`, `LIGHT_CONSTANT_DOMAINS`, `DEFAULT_LINKERS`, and `COMMON_MUTATIONS`.
+* **EU Alignment Across IgG1–IgG4 & Isolated Constant Domains ([`src/fc_engineer/core.py:get_residue_index`](./src/fc_engineer/core.py), [`src/fc_engineer/core.py:get_eu_position`](./src/fc_engineer/core.py), [`src/fc_engineer/core.py:get_domain_slice_bounds`](./src/fc_engineer/core.py), [`src/fc_engineer/core.py:get_domain_eu_position`](./src/fc_engineer/core.py)):** Starts at `EU_START = 118`; maps IgG2/IgG4 hinge deletions `223..225` and IgG3 unmapped repeat hinge positions `223..230` (`IGG3_GAP_END`) to `None`; `get_eu_position` returns `None` for negative indices and IgG3 extended-hinge repeat indices `105..159`, while domain helpers map per-domain slices (`CH1`, `Hinge`, `CH2`, `CH3`) without N-terminal variable/linker shifts.
+* **Strict ASCII Validation, Atomic Routing & Persistence Bounds ([`src/fc_engineer/core.py:parse_mutation`](./src/fc_engineer/core.py), [`src/fc_engineer/designer.py:route_mutations_to_chain`](./src/fc_engineer/designer.py), [`src/fc_engineer/exporters.py:parse_ab_project`](./src/fc_engineer/exporters.py)):** Enforces ASCII-only `[0-9]` regexes with `\Z` anchors (`len <= 10`), `[A-Z]+` base sequences, Phase 1 dry-run rollback before mutating any domain/chain, `.ab` 1 MiB file size limits, collection caps (`1..16` chains, `1..32` domains/chain, `<= 64` pairings, `<= 100` file custom mutations, `<= 50` `mutation_history` entries of `<= 200` chars), exact `ORIGIN == assembled_seq` parity, and `os.path.basename` path redaction on file I/O errors.
+* **Clipboard Auto-Clear Security ([`src/fc_engineer/app.py:AntibodyStudioController.copy_text_secure`](./src/fc_engineer/app.py), [`src/fc_engineer/app.py:AntibodyStudioController.clear_clipboard`](./src/fc_engineer/app.py), [`src/fc_engineer/app.py:AntibodyStudioController.shutdown`](./src/fc_engineer/app.py)):** Protects `copied_fasta`, `_clipboard_timer`, and monotonic `_clipboard_gen` under `threading.RLock`, wipes prior matching clipboard state before copying new payloads, schedules a daemon 30-second `threading.Timer`, clears only matching content with current generation token, and purges clipboard state on `.ab` load, format switch, window close, and `atexit`.
 
 ## Side Effects
 
-* **Import-Time Config Reads (`[src/fc_engineer/config.py:_load_all_config]`):** Reads `./src/fc_engineer/data/sequences.yaml` and `./src/fc_engineer/data/mutants.yaml` once on import, logging sanitized diagnostics to `logger.error` and `sys.stderr`.
-* **Local File I/O (`[src/fc_engineer/exporters.py]`):** Reads `.ab` files (`load_ab_file`) and writes `.ab`, `.fasta`/`.fa`, and transparent RGBA `.png` schematics via Pillow (`Image`).
-* **OS Clipboard & Timers (`[src/fc_engineer/app.py:AntibodyStudioController]`):** Copies exported FASTA strings via `pyperclip.copy`, manages `threading.Timer(30.0, ...)` callbacks, and clears matching OS clipboard data on expiry or teardown.
-* **Flet Desktop Loop & System Date (`[src/fc_engineer/app.py:main]`, `[src/fc_engineer/exporters.py:serialize_ab_project]`):** Launches `ft.run(...)` with native file picker dialogs and reads `date.today()` for GenBank headers.
+* **Import-Time Config Reads ([`src/fc_engineer/config.py:_load_all_config`](./src/fc_engineer/config.py)):** Reads `./src/fc_engineer/data/sequences.yaml` and `./src/fc_engineer/data/mutants.yaml` once on import, logging sanitized diagnostics to `logger.error` and `sys.stderr`.
+* **Local File I/O ([`src/fc_engineer/exporters.py`](./src/fc_engineer/exporters.py)):** Reads `.ab` files (`load_ab_file`) and writes `.ab`, `.fasta`/`.fa`, and transparent RGBA `.png` schematics via Pillow (`Image`).
+* **OS Clipboard & Timers ([`src/fc_engineer/app.py:AntibodyStudioController`](./src/fc_engineer/app.py)):** Copies exported FASTA strings via `pyperclip.copy`, manages `threading.Timer(30.0, ...)` callbacks, and clears matching OS clipboard data on expiry or teardown.
+* **Flet Desktop Loop & System Date ([`src/fc_engineer/app.py:main`](./src/fc_engineer/app.py), [`src/fc_engineer/exporters.py:serialize_ab_project`](./src/fc_engineer/exporters.py)):** Launches `ft.run(...)` with native file picker dialogs and reads `date.today()` for GenBank headers.
 
 ## Verification
 
@@ -98,14 +99,20 @@ uv run pytest
 
 ## 주요 조작 및 내보내기
 
-1. **상단 툴바**: 프로젝트 이름 편집, 포맷 템플릿 전환(`IgG` / `CrossMab` / `IgG-scFv` / `scFv-Fc` / `DVD-Ig` / `BiTE` / `Custom`), `Add Chain`, `Load .ab`, `Save .ab`, `Export FASTA`, `Export PNG`, `Copy FASTA (30s Auto-Clear)`.
+1. **상단 툴바**: 프로젝트 이름 편집, 포맷 템플릿 전환(`Monospecific IgG` / `CrossMab` / `IgG-scFv` / `scFv-Fc` / `DVD-Ig` / `BiTE` / `Custom Construct`), `Add Chain`, `Load .ab`, `Save .ab`, `Export FASTA`, `Export PNG`, `Copy FASTA (30s Auto-Clear)`.
 2. **좌측 도메인 팔레트 & 페어링 빌더**: 8종 도메인 블록을 중앙 체인 스트립 슬롯으로 드래그하여 추가하고, 체인 간/체인 내 `VH_VL`, `CH1_CL`, `HINGE_DISULFIDE`, `CH3_DIMER` 페어링을 구성합니다.
 3. **중앙 2D 캔버스 & 체인 스트립**: 캔버스에서 도메인을 마우스로 드래그해 2D 위치를 고정(`pinned=True`)하거나, 체인 스트립에서 도메인 순서를 변경 및 다른 체인으로 이동할 수 있습니다.
-4. **우측 인스펙터**: 선택한 도메인의 Isotype(`igg1`–`igg4`)/Allotype(`WT`, `trastzumab`, `rituximab`, `cetuximab`, `g1m17`, `g1m3`, `g1m1`), `CL` 서브타입, `VH`/`VL`/`G4S` 서열, Fc 프리셋(선택적 `Apply to all heavy chains`), 파일 전용 커스텀 변이 등록, 실시간 서열 diff 및 PTM 점검 결과를 확인합니다.
+4. **우측 인스펙터**: 선택한 도메인의 Isotype(`igg1`–`igg4`)/Allotype(`WT(P01857-1)`, `WT(P01859-1)`, `WT(P01860-1)`, `WT(P01861-1)`, `trastzumab`, `rituximab`, `cetuximab`, `g1m17`, `g1m3`, `g1m1`), `CL` 서브타입, `VH`/`VL`/`G4S` 서열, Fc 프리셋(선택적 `Apply to all heavy chains`), 파일 전용 커스텀 변이 등록, 실시간 서열 diff 및 PTM 점검 결과를 확인합니다.
 
 ## 프로젝트 구조
 
 ```
+.github/
+└── workflows/
+    └── release.yml          # v*.*.* 태그 푸시 시 검증·빌드 및 GitHub Release 자동 발행
+docs/
+└── designs/
+    └── flet-antibody-studio.md  # Flet 아키텍처 설계 명세
 src/
 ├── README.md                # Intermediate Blueprint (Hay) 계약
 └── fc_engineer/

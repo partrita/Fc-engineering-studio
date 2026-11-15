@@ -71,7 +71,7 @@ flowchart TD
     EngineLayer <--> GUILayer
 ```
 
-### 2. Core Data Model (`src/fc_engineer/designer.py`)
+### 2. Core Data Model ([`src/fc_engineer/designer.py`](../../src/fc_engineer/designer.py))
 
 * **`DomainBlock`**: Represents a single modular domain inside a polypeptide chain.
   * `id: str`: Unique identifier within the project matching `r"[A-Za-z0-9_]+\Z"` (maximum `64` characters, e.g., `hc1_ch2`).
@@ -97,7 +97,7 @@ flowchart TD
   * `pairings: List[InterChainPairing] = field(default_factory=list)`.
   * `file_custom_mutations: List[Dict[str, str]] = field(default_factory=list)`: User-added mutation definitions (`{"label": "...", "value": "..."}`) scoped to this project file.
 
-### 3. Domain-Aware EU Numbering and Cross-Domain Mutation Routing (`src/fc_engineer/core.py` & `src/fc_engineer/designer.py`)
+### 3. Domain-Aware EU Numbering and Cross-Domain Mutation Routing ([`src/fc_engineer/core.py`](../../src/fc_engineer/core.py) & [`src/fc_engineer/designer.py`](../../src/fc_engineer/designer.py))
 
 Existing functions in `src/fc_engineer/core.py` (`get_residue_index`, `get_eu_position`, `diff_sequences`, `parse_mutation`, `apply_mutations`, `generate_batch`, `analyze_developability`) remain intact for contiguous `CH1-Hinge-CH2-CH3` strings, while `diff_sequences()` and `analyze_developability()` accept an optional `domain_type: Optional[str] = None` parameter to reuse their diff and PTM-liability logic on isolated constant domains. Shared tokenization (`parse_mutation_list`) and constant-domain slicing keep `core.py` free of configuration dependencies:
 
@@ -119,40 +119,40 @@ Existing functions in `src/fc_engineer/core.py` (`get_residue_index`, `get_eu_po
    * If `domain.domain_type == "G4S"`, the resolver uses `domain.custom_sequence` if non-empty (also validated against `r"[A-Z]+"` and maximum length `2000`), defaulting to `(GGGGS)3` (`GGGGSGGGGSGGGGS`). Non-empty `custom_sequence` is rejected on constant domains (`CH1`, `Hinge`, `CH2`, `CH3`, `CL`). When resolving effective mutations, `get_effective_domain_mutations(domain, preset_map)` filters tokens expanded from `domain.applied_presets` to `CONSTANT_DOMAIN_EU_RANGES[domain.domain_type]` so cross-domain presets (such as `GAALIELS`) apply cleanly across `CH2` and `CH3`.
    * `diff_chain_sequences(chain, preset_map)` and `analyze_chain_developability(chain, preset_map)` in `src/fc_engineer/designer.py` aggregate `core.diff_sequences(..., domain_type=...)` and `core.analyze_developability(..., domain_type=...)` per constant domain so N-terminal variable regions, linkers, and omitted/swapped constant domains never shift EU coordinates.
 
-### 4. Supported Antibody Formats and Starter Templates (`src/fc_engineer/designer.py`)
+### 4. Supported Antibody Formats and Starter Templates ([`src/fc_engineer/designer.py`](../../src/fc_engineer/designer.py))
 
 `build_format_template(format_type: str, isotype: str = "igg1", allotype: Optional[str] = None) -> AntibodyProject` constructs pre-wired chains, 2D `(x, y)` coordinates, and inter-chain pairings for the six templates below (plus `"custom"` empty starter projects):
 
 * **`Monospecific IgG` (`igg`)**: Two identical heavy chains (`VH_A - CH1 - Hinge - CH2 - CH3`) and two identical light chains (`VL_A - CL_kappa`), paired via `VH-VL`, `CH1-CL`, `Hinge-Hinge`, and `CH3-CH3`.
 * **`CrossMab` (`crossmab`)**: Four distinct chains: `HC_Knob` (`VH_A - CH1 - Hinge - CH2 - CH3` with `Knob` `T366W`), `LC_A` (`VL_A - CL_kappa`), `HC_Hole_Cross` (`VH_B - CL_kappa - Hinge - CH2 - CH3` with `Hole` `T366S/L368A/Y407V`), and `LC_B_Cross` (`VL_B - CH1`).
 * **`IgG-scFv` (`igg_scfv`)**: Two heavy chains with C-terminal scFv fusions (`VH_A - CH1 - Hinge - CH2 - CH3 - G4S - VH_B - G4S - VL_B`) paired with two light chains (`VL_A - CL_kappa`), with inter-chain `VH_A-VL_A` (`VH_VL`), `CH1-CL`, `Hinge-Hinge`, and `CH3-CH3` pairings plus intra-chain `VH_B-VL_B` (`VH_VL`) pairings on each heavy chain.
-* **`scFv-Fc` (`scfv_fc`)**: Two chains lacking `CH1`/`CL`: `Chain_A` (`VH_A - G4S - VL_A - Hinge - CH2 - CH3` with `Knob`) and `Chain_B` (`VH_B - G4S - VL_B - Hinge - CH2 - CH3` with `Hole`), paired at `Hinge` and `CH3`.
+* **`scFv-Fc` (`scfv_fc`)**: Two chains lacking `CH1`/`CL`: `Chain_A` (`VH_A - G4S - VL_A - Hinge - CH2 - CH3` with `Knob`) and `Chain_B` (`VH_B - G4S - VL_B - Hinge - CH2 - CH3` with `Hole`), paired at `Hinge` (`HINGE_DISULFIDE`), `CH3` (`CH3_DIMER`), and intra-chain scFv `VH`–`VL` (`VH_VL` on `Chain_A` and `Chain_B`).
 * **`DVD-Ig` (`dvd_ig`)**: Two tandem-variable heavy chains (`VH_B - G4S - VH_A - CH1 - Hinge - CH2 - CH3`) paired with two tandem-variable light chains (`VL_B - G4S - VL_A - CL_kappa`).
 * **`BiTE` (`bite`)**: Single polypeptide chain (`VH_A - G4S - VL_A - G4S - VH_B - G4S - VL_B`) with intra-chain `VH_A-VL_A` and `VH_B-VL_B` pairings and zero Fc domains.
 
-### 5. Single-File `.ab` GenBank-Style Persistence (`src/fc_engineer/exporters.py`)
+### 5. Single-File `.ab` GenBank-Style Persistence ([`src/fc_engineer/exporters.py`](../../src/fc_engineer/exporters.py))
 
 `serialize_ab_project(project: AntibodyProject) -> str` and `parse_ab_project(content: str) -> AntibodyProject` (plus `load_ab_file(path: str)` and `save_ab_file(path: str, project: AntibodyProject)`) implement the `.ab` file format:
 
 1. **Multi-LOCUS Structure:** Each `PolypeptideChain` is written as a standard GenBank protein record (`LOCUS <chain_id> <len> aa linear UNK <date>` through `//`).
 2. **Embedded Project Manifest in `COMMENT`:** The first `LOCUS` record contains a structured manifest between `FC_STUDIO_PROJECT_V1_BEGIN` and `FC_STUDIO_PROJECT_V1_END` comment lines. Each line of the JSON payload is prefixed with standard 12-column GenBank comment indentation so standard GenBank parsers treat it as a normal comment while `parse_ab_project()` reconstructs the exact `AntibodyProject` (including 2D `(x, y)` coordinates, inter-chain pairings, `mutation_history`, and `file_custom_mutations`).
-3. **Human-Readable `FEATURES` and `ORIGIN`:** Every chain's `FEATURES` table lists `region start..end` (1-based inclusive offsets) for each `DomainBlock` (with `/domain_type`, `/label="{domain_type}:{template_key or allotype or isotype}"`, `/coords="x,y"`, and optional `/mutations="..."` omitted when a domain has no effective mutations, with double quotes stripped or escaped in qualifier values) and `variation` entries (1-based chain index with `/note="EU_{eu_pos}:{wt_aa}->{mut_aa}"`) for each EU mutation, followed by the 60-aa-per-line `ORIGIN` sequence.
+3. **Human-Readable `FEATURES` and `ORIGIN`:** Every chain's `FEATURES` table lists `region start..end` (1-based inclusive offsets) for each `DomainBlock` (with `/domain_type`, `/label="{domain_type}:{template_key or allotype or isotype}"`, `/coords="{dom.x:.1f},{dom.y:.1f}"`, and optional `/mutations="..."` omitted when a domain has no effective mutations, with double quotes stripped or escaped in qualifier values) and `variation` entries (1-based chain index with `/note="EU_{eu_pos}:{wt_aa}->{mut_aa}"`) for each EU mutation, followed by the 60-aa-per-line `ORIGIN` sequence.
 4. **Security Controls:** `load_ab_file()` validates the `.ab` suffix first, checks `os.path.exists(path)` (`FileNotFoundError`), verifies `os.path.isfile(path)` and `os.path.getsize(path) <= 1_048_576` (`ValueError`, 1 MB), reads at most `MAX_FILE_SIZE + 1` bytes, enforces lower and upper collection bounds (`1 <= len(project.chains) <= 16`, `1 <= len(chain.domains) <= 32`, maximum `64` pairings, maximum `100` per-file custom mutations), parses `LOCUS ... //` records in ordinal sequence requiring `len(locus_records) == len(project.chains)`, validates all mutation tokens with `parse_mutation()` (`[A-Z][0-9]+[A-Z]\Z`), and verifies that record `i`'s assembled chain sequence matches record `i`'s `ORIGIN` sequence.
 
-### 6. Transparent-Background `.png` Schematic Exporter (`src/fc_engineer/exporters.py`)
+### 6. Transparent-Background `.png` Schematic Exporter ([`src/fc_engineer/exporters.py`](../../src/fc_engineer/exporters.py))
 
 `export_schematic_png(project: AntibodyProject, scale: float = 2.0) -> bytes` uses Pillow (`PIL.Image`, `PIL.ImageDraw`) to consume `build_schematic_scene(project)` (shared layout geometry, colors, connectors, pairings, and mutation badges) and render a transparent RGBA image (`mode="RGBA"`, background `(0, 0, 0, 0)`):
 
 1. Computes the bounding box across the scene's domain rects `(x, y)` with padding so user-dragged coordinates are preserved.
 2. Draws dashed inter-chain pairing lines (`VH-VL`, `CH1-CL`, `Hinge-Hinge` disulfide double lines, `CH3-CH3`) and curved dashed intra-chain scFv `VH-VL` arcs behind domain blocks.
 3. Draws solid N-to-C polypeptide backbone connectors between consecutive domains in each chain.
-4. Draws rounded rectangles for each domain color-coded by `domain_type` (`VH`/`VL` variable tones, `CH1`/`CL` light constant tones, `Hinge` connector pill, `CH2`/`CH3` Fc tones, `G4S` flexible linker badge) with domain title, chain name at N-terminus, and applied mutation badges (e.g., `T366W [Knob]`, `L234A/L235A`).
+4. Draws rounded rectangles for each domain color-coded by `domain_type` (`VH`/`VL` variable tones, `CH1`/`CL` light constant tones, `Hinge` connector pill, `CH2`/`CH3` Fc tones, `G4S` flexible linker badge) with domain title, chain name at N-terminus, and applied mutation badges formatted as comma-separated preset labels plus up to two custom mutations (e.g., `"Knob, K360E, Q362E, +1"`).
 
-### 7. Flet Local Desktop GUI (`src/fc_engineer/app.py`)
+### 7. Flet Local Desktop GUI ([`src/fc_engineer/app.py`](../../src/fc_engineer/app.py))
 
-`src/fc_engineer/app.py` replaces the Textual TUI with the Flet desktop application (`"flet[desktop]>=0.86.0"`), invoking `ft.run(lambda page: build_studio_ui(page, controller))` inside `main() -> None`:
+[`src/fc_engineer/app.py`](../../src/fc_engineer/app.py) replaces the Textual TUI with the Flet desktop application (`"flet[desktop]>=0.86.0"`), invoking `ft.run(lambda page: build_studio_ui(page, controller))` inside `main() -> None`:
 
-* **Top Toolbar:** Project name field, Format Template selector (`Monospecific IgG`, `CrossMab`, `IgG-scFv`, `scFv-Fc`, `DVD-Ig`, `BiTE`), `Add Chain` button, `Load .ab`, `Save .ab`, `Export FASTA`, `Export Transparent PNG`, and `Copy FASTA (30s Auto-Clear)`.
+* **Top Toolbar:** Project name field, Format Template selector (`Monospecific IgG`, `CrossMab`, `IgG-scFv`, `scFv-Fc`, `DVD-Ig`, `BiTE`, `Custom Construct`), `Add Chain` button, `Load .ab`, `Save .ab`, `Export FASTA`, `Export PNG`, and `Copy FASTA (30s Auto-Clear)`.
 * **Left Panel (Domain Palette & Pairing Controls):**
   * `ft.Draggable` cards (`group="domain_palette"`) for `VH`, `VL`, `CH1`, `CL`, `Hinge`, `CH2`, `CH3`, and `G4S`.
   * Inter-Chain Pairing Builder (select source chain/domain, target chain/domain, and pairing type to add or remove pairing lines).
@@ -201,11 +201,11 @@ Existing functions in `src/fc_engineer/core.py` (`get_residue_index`, `get_eu_po
 
 The following implementation list enumerates every file to be created or modified, the rationale for each change, and the public APIs and schemas involved.
 
-1. **`./pyproject.toml` (Modified)**
+1. **[`./pyproject.toml`](../../pyproject.toml) (Modified)**
    * **What Changes:** Remove `textual>=8.2.3` from `dependencies` under `[project]` and add `"flet[desktop]>=0.86.0"` (bundling `flet-desktop` for local desktop execution of `uv run fc-engineer`) and `"pillow>=11.0.0"`. Update `[project]` `description` to reflect the Flet-based antibody and bispecific domain engineering GUI. Retain `requires-python = ">=3.14"`, `[project.scripts]` (`fc-engineer = "fc_engineer.app:main"`), `[tool.setuptools.package-data]`, and `[dependency-groups]` `dev` dependencies (`bandit`, `pytest`, `pytest-asyncio`).
    * **Rationale:** Replaces the Textual terminal dependency with `"flet[desktop]>=0.86.0"` (supporting Python `>=3.14` and the local Flutter desktop runner) and Pillow for rendering transparent-background `.png` schematics.
 
-2. **`./src/fc_engineer/data/sequences.yaml` (Modified)**
+2. **[`./src/fc_engineer/data/sequences.yaml`](../../src/fc_engineer/data/sequences.yaml) (Modified)**
    * **What Changes:** Keep `isotypes` (`igg1`, `igg2`, `igg3`, `igg4`) unchanged and add three top-level dictionary sections:
      * `variable_domains`: Built-in fallback variable domain sequences:
        * `VH_A` (Target Arm A — Trastuzumab VH, 120 aa): `EVQLVESGGGLVQPGGSLRLSCAASGFNIKDTYIHWVRQAPGKGLEWVARIYPTNGYTRYADSVKGRFTISADTSKNTAYLQMNSLRAEDTAVYYCSRWGGDGFYAMDYWGQGTLVTVSS`
@@ -218,7 +218,7 @@ The following implementation list enumerates every file to be created or modifie
      * `linkers`: Standard glycine-serine peptide linkers (`G4S_3`: 15-mer `GGGGSGGGGSGGGGS` default, `G4S_2`: 10-mer `GGGGSGGGGS`, `G4S_1`: 5-mer `GGGGS`).
    * **Rationale:** Supplies canonical default sequences for `VH`, `VL`, `CL`, and `G4S` blocks and gives bispecific templates (`CrossMab`, `IgG-scFv`, `scFv-Fc`, `DVD-Ig`, `BiTE`) distinct Target Arm A and Target Arm B variable regions.
 
-3. **`./src/fc_engineer/config.py` (Modified)**
+3. **[`./src/fc_engineer/config.py`](../../src/fc_engineer/config.py) (Modified)**
    * **What Changes:**
      * Promote `MAX_FILE_SIZE = 1 * 1024 * 1024` to a module-level constant reusable by `exporters.py`.
      * Extract `_load_yaml_dict(path: str) -> Dict[str, Any]`: assigns `file_name = os.path.basename(path)` before `try:`, verifies `os.path.isfile(path)`, `os.path.getsize(path) <= MAX_FILE_SIZE`, `.read(MAX_FILE_SIZE + 1)`, and `len(content.encode("utf-8")) <= MAX_FILE_SIZE`, parses via `yaml.load(content, Loader=NoAliasSafeLoader)  # nosec B506`, checks `isinstance(data, dict)`, emits sanitized `sys.stderr` notices limited to `file_name` plus `log_sanitized_error()`, and returns `{}` on missing files, non-dict payloads, or errors for reuse across `sequences.yaml` and `mutants.yaml`.
@@ -226,7 +226,7 @@ The following implementation list enumerates every file to be created or modifie
      * Retain `NoAliasSafeLoader`, annotate `log_sanitized_error(logger_obj: logging.Logger, msg: str, e: Exception) -> None`, keep `load_yaml_data() -> Tuple[Dict[str, Dict[str, str]], List[Dict[str, str]]]` and `load_domain_templates() -> Tuple[Dict[str, str], Dict[str, str], Dict[str, str]]` free of side effects, and populate module constants (`SEQUENCES`, `COMMON_MUTATIONS`, `VARIABLE_DOMAINS`, `LIGHT_CONSTANT_DOMAINS`, `DEFAULT_LINKERS`) via `_load_all_config() -> None`.
    * **Rationale:** Eliminates duplicate file-loading boilerplate, enforces uniform `[A-Z]+` sequence validation on `isotypes` as well as non-Fc templates, and avoids double-parsing `sequences.yaml` at startup without mutating globals inside public loader functions.
 
-4. **`./src/fc_engineer/core.py` (Modified)**
+4. **[`./src/fc_engineer/core.py`](../../src/fc_engineer/core.py) (Modified)**
    * **What Changes:**
      * Extract `parse_mutation_list(mutants_str: str) -> Tuple[List[Tuple[str, int, str]], List[str]]`:
        * Returns `([], ["Error: Mutation string must be a string."])` if `not isinstance(mutants_str, str)` and `([], [])` if empty or whitespace-only.
@@ -249,7 +249,7 @@ The following implementation list enumerates every file to be created or modifie
        * Deduplicates identical `(wt_aa, pos, mut_aa)` tokens, rejects conflicting substitutions at `applied_by_pos[pos]`, and returns unmutated `domain_seq` alongside collected `errors` whenever `errors` is non-empty.
    * **Rationale:** Decouples forward and reverse EU residue indexing from the assumption that a sequence starts at `EU 118` (`CH1`), keeps `core.py` free of config imports, and shares one tokenization and PTM/diff pipeline across contiguous `CH1-Hinge-CH2-CH3` and per-domain paths.
 
-5. **`./src/fc_engineer/designer.py` (Created)**
+5. **[`./src/fc_engineer/designer.py`](../../src/fc_engineer/designer.py) (Created)**
    * **What Changes:** Create the domain assembly, schematic scene, format template, and chain-level mutation routing module with these dataclasses, constants, and functions:
      * `DomainBlock(id: str, domain_type: str, isotype: str = "igg1", allotype: str = "", template_key: str = "", custom_sequence: str = "", x: float = 0.0, y: float = 0.0, pinned: bool = False, applied_presets: List[str] = field(default_factory=list), custom_mutations: List[str] = field(default_factory=list), mutation_history: List[str] = field(default_factory=list))`
      * `PolypeptideChain(id: str, name: str, domains: List[DomainBlock] = field(default_factory=list), x: float = 0.0, y: float = 0.0)`
@@ -260,7 +260,7 @@ The following implementation list enumerates every file to be created or modifie
      * `SchematicEdge(chain_id: str, from_domain_id: str, to_domain_id: str, x1: float, y1: float, x2: float, y2: float, edge_kind: str)`: N-to-C backbone segment between consecutive domains on a chain (`edge_kind="backbone"`).
      * `SchematicPairingEdge(pairing_id: str, chain_a_id: str, domain_a_id: str, chain_b_id: str, domain_b_id: str, pairing_type: str, x1: float, y1: float, x2: float, y2: float)`: inter- or intra-chain pairing geometry (`"CH1_CL"`, `"HINGE_DISULFIDE"` rendered as parallel double lines, `"CH3_DIMER"`, `"VH_VL"` rendered as a curved dashed intra-chain scFv arc when `chain_a_id == chain_b_id` or dashed line otherwise).
      * `SchematicScene(nodes: List[SchematicNode], edges: List[SchematicEdge], pairing_edges: List[SchematicPairingEdge], bounds: Tuple[float, float, float, float])`: scene container with `(min_x - SCENE_PADDING, min_y - SCENE_PADDING, max_x + SCENE_PADDING, max_y + SCENE_PADDING)` padded bounds (defaulting to `(0.0, 0.0, 320.0, 200.0)` when `nodes` is empty).
-     * `build_preset_map(project: AntibodyProject) -> Dict[str, str]`: merges built-in `COMMON_MUTATIONS` labels (`label -> value`) with `project.file_custom_mutations`.
+     * `build_preset_map(project: Optional[AntibodyProject] = None) -> Dict[str, str]`: merges built-in `COMMON_MUTATIONS` labels (`label -> value`) with `project.file_custom_mutations` when `project` is provided.
      * `get_effective_domain_mutations(domain: DomainBlock, preset_map: Optional[Dict[str, str]] = None) -> Tuple[List[str], List[str]]`:
        * Defaults `preset_map` to the built-in `COMMON_MUTATIONS` map when `None`.
        * Returns `([], errors)` if non-empty `applied_presets` or `custom_mutations` are set on non-constant domains (`VH`, `VL`, `CL`, `G4S`).
@@ -285,12 +285,12 @@ The following implementation list enumerates every file to be created or modifie
        * Appends `{"label": stripped, "value": "/".join(f"{wt}{pos}{mut}" for wt, pos, mut in parsed_tokens)}` and returns `[]` on success.
      * `build_format_template(format_type: str, isotype: str = "igg1", allotype: Optional[str] = None) -> AntibodyProject`:
        * Raises `ValueError` if `format_type` is unknown, `iso_map = SEQUENCES.get(isotype)` is missing or empty, or an explicit non-empty `allotype` is absent from `iso_map`; otherwise selects `allotype or next(iter(iso_map))`.
-       * Builds deterministic chain IDs (`"Chain_1"`, `"HC_1"`, `"HC_2"`, `"LC_1"`, `"LC_2"`, `"HC_Knob"`, `"LC_A"`, `"HC_Hole_Cross"`, `"LC_B_Cross"`, `"Chain_A"`, `"Chain_B"`), initial anchors `(40.0, 40.0 + idx * 96.0)`, pre-populated domains, `Knob`/`Hole` presets, and pairings (including intra-chain `VH_B-VL_B` `VH_VL` pairings on `"igg_scfv"`) for `"igg"`, `"crossmab"`, `"igg_scfv"`, `"scfv_fc"`, `"dvd_ig"`, `"bite"`, and `"custom"`.
+       * Builds deterministic chain IDs (`"Chain_1"`, `"HC_1"`, `"HC_2"`, `"LC_1"`, `"LC_2"`, `"HC_Knob"`, `"LC_A"`, `"HC_Hole_Cross"`, `"LC_B_Cross"`, `"Chain_A"`, `"Chain_B"`), initial anchors `(40.0, 40.0 + idx * 96.0)`, pre-populated domains, `Knob`/`Hole` presets, and pairings (including intra-chain `VH_B-VL_B` `VH_VL` pairings on `"igg_scfv"`, intra-chain `VH-VL` pairings `ca_vh`–`ca_vl` and `cb_vh`–`cb_vl` on `"scfv_fc"`, and intra-chain `VH_VL` pairings on `"bite"`) for `"igg"`, `"crossmab"`, `"igg_scfv"`, `"scfv_fc"`, `"dvd_ig"`, `"bite"`, and `"custom"`.
      * `reflow_chain_coordinates(chain: PolypeptideChain) -> None`: sets unpinned (`not domain.pinned`) domain coordinates in N-to-C order to `(chain.x + idx * 116.0, chain.y)`.
      * `build_schematic_scene(project: AntibodyProject, preset_map: Optional[Dict[str, str]] = None) -> SchematicScene`: validates finite domain coordinates bounded within `[-10000.0, 10000.0]` (`ValueError` otherwise), sets `is_n_terminus = (idx == 0)` and `chain_name = chain.name` on each `SchematicNode`, defaults `preset_map` to `build_preset_map(project)` when `None`, and builds the UI-agnostic `SchematicScene` shared by the Flet canvas and Pillow PNG exporter.
    * **Rationale:** Encapsulates antibody engineering state, shared schematic geometry, and mutation routing in a pure-Python module without Flet dependencies.
 
-6. **`./src/fc_engineer/exporters.py` (Modified)**
+6. **[`./src/fc_engineer/exporters.py`](../../src/fc_engineer/exporters.py) (Modified)**
    * **What Changes:**
      * Extract `_format_origin_block(sequence: str) -> List[str]` shared by `format_genbank()` and `serialize_ab_project()`, and retain `sanitize_locus()`, `_genbank_date()`, `MAX_EXPORT_SEQUENCE_LENGTH`, `MAX_METADATA_LENGTH`, `format_genbank()`, and `format_csv_report()`.
      * Add `format_project_fasta(project: AntibodyProject) -> Tuple[str, List[str]]` and `save_fasta_file(path: str, project: AntibodyProject) -> None`:
@@ -299,7 +299,7 @@ The following implementation list enumerates every file to be created or modifie
      * Add `serialize_ab_project(project: AntibodyProject) -> str`:
        * Rejects collection bound violations (`1 <= len(project.chains) <= 16`, `1 <= len(chain.domains) <= 32`, `<= 64` pairings, `<= 100` `file_custom_mutations`) and chain resolution errors with `ValueError`, passing `build_preset_map(project)` to chain assembly and annotation builders.
        * Embeds the `FC_STUDIO_PROJECT_V1_BEGIN` ... `FC_STUDIO_PROJECT_V1_END` JSON manifest (`json.dumps(..., ensure_ascii=True, indent=2)`) in the first record's `COMMENT` block prefixed with 12 spaces per line, containing `"schema_version": 1`, `"name"`, `"format_type"`, `"file_custom_mutations"` (`[{"label": str, "value": str}]`), `"chains"` (`{"id", "name", "x", "y", "domains": [{"id", "domain_type", "isotype", "allotype", "template_key", "custom_sequence", "x", "y", "pinned": bool, "applied_presets": [str], "custom_mutations": [str], "mutation_history": [str]}]}`), and `"pairings"` (`[{"id", "chain_a_id", "domain_a_id", "chain_b_id", "domain_b_id", "pairing_type"}]`).
-       * Reuses `sanitize_locus()`, `_genbank_date()`, `MAX_EXPORT_SEQUENCE_LENGTH`, control-character and double-quote stripping/escaping in qualifiers, and `_format_origin_block()` to write GenBank `region` features (`1-based start..end`, `/domain_type`, `/label="{domain_type}:{template_key or allotype or isotype}"`, `/coords="x,y"`, optional `/mutations="..."` omitted when empty) and `variation` features (`1-based residue index`, `/note="EU_{eu_pos}:{wt_aa}->{mut_aa}"`) in `FEATURES` plus `ORIGIN`, rejecting serialized UTF-8 payloads exceeding `config.MAX_FILE_SIZE`.
+       * Reuses `sanitize_locus()`, `_genbank_date()`, `MAX_EXPORT_SEQUENCE_LENGTH`, control-character and double-quote stripping/escaping in qualifiers, and `_format_origin_block()` to write GenBank `region` features (`1-based start..end`, `/domain_type`, `/label="{domain_type}:{template_key or allotype or isotype}"`, `/coords="{dom.x:.1f},{dom.y:.1f}"`, optional `/mutations="..."` omitted when empty) and `variation` features (`1-based residue index`, `/note="EU_{eu_pos}:{wt_aa}->{mut_aa}"`) in `FEATURES` plus `ORIGIN`, rejecting serialized UTF-8 payloads exceeding `config.MAX_FILE_SIZE`.
      * Add `parse_ab_project(content: str) -> AntibodyProject`:
        * Validates `isinstance(content, str)` and UTF-8 byte length `<= config.MAX_FILE_SIZE`; splits GenBank records cleanly on standalone `"//"` delimiter lines.
        * Extracts JSON lines strictly between `FC_STUDIO_PROJECT_V1_BEGIN` and `FC_STUDIO_PROJECT_V1_END` inside the first record's `COMMENT` section (stripping the 12-column prefix), and parses via `json.loads(..., parse_constant=...)` rejecting `NaN`/`Infinity`/`-Infinity` and catching `json.JSONDecodeError` and `RecursionError`.
@@ -315,14 +315,16 @@ The following implementation list enumerates every file to be created or modifie
        * Add `save_schematic_png(path: str, project: AntibodyProject, scale: float = 2.0) -> None`: auto-appends `.png` when `path` lacks a suffix (rejecting mismatched extensions with `ValueError`), validates rendered byte size `<= config.MAX_FILE_SIZE`, writes bytes to disk, and formats errors using only `os.path.basename(path)`.
    * **Rationale:** Reuses existing GenBank formatters and `build_schematic_scene()` so `.ab` persistence and `.png` / FASTA exports match the interactive workspace and `AGENTS.md` Sentinel rules.
 
-7. **`./src/fc_engineer/app.py` (Modified)**
+7. **[`./src/fc_engineer/app.py`](../../src/fc_engineer/app.py) (Modified)**
    * **What Changes:**
      * Remove all Textual imports and `Screen`/`App` classes (`WelcomeScreen`, `IsotypeScreen`, `AllotypeScreen`, `MutationScreen`, `BatchScreen`, `ResultScreen`, `MutantApp`).
      * Initialize `logger = logging.getLogger(__name__)` for sanitized runtime warnings, reusing `config.log_sanitized_error()` and `os.path.basename(path)` on file errors so filesystem paths are never logged.
      * Implement `AntibodyStudioController` managing workspace state and lifecycle:
        * State attributes: `project: AntibodyProject`, `selected_chain_id: Optional[str]`, `selected_domain_id: Optional[str]`, `apply_to_all_heavy: bool`, `copied_fasta: str`, `_clipboard_timer: Optional[threading.Timer]`, `_clipboard_gen: int`, and `_clipboard_lock: threading.RLock` protecting `copied_fasta`, `_clipboard_timer`, and `_clipboard_gen`.
        * **Project & Chain/Domain Assembly:**
+         * `select_domain(chain_id: Optional[str], domain_id: Optional[str] = None) -> None`: selects the active chain/domain inspected in the right panel (or clears selection when `chain_id is None`).
          * `select_format(format_type: str, isotype: str = "igg1", allotype: Optional[str] = None) -> AntibodyProject`: wipes clipboard inside `try...finally`, replaces `self.project` via `build_format_template()`, and resets `selected_chain_id`/`selected_domain_id` to the first chain/domain (or `None`).
+         * `rename_project(name: str) -> None`: validates non-empty string length (`<= MAX_METADATA_LENGTH`) without disallowed control characters and updates `self.project.name`.
          * `add_chain(name: Optional[str] = None) -> PolypeptideChain`: enforces `len(project.chains) < 16` (`ValueError`), generates a unique ASCII ID (`Chain_{n}`) and default name when omitted (`ValueError` on oversized/control-char names), appends at `(40.0, 40.0 + idx * 96.0)`, and selects the new chain.
          * `remove_chain(chain_id: str) -> None`: validates `chain_id` exists (`ValueError`), delegates to `remove_chain_from_project()`, and clears or reassigns `selected_chain_id`/`selected_domain_id` if removed.
          * `add_domain_to_chain(chain_id: str, domain_type: str, index: Optional[int] = None) -> DomainBlock`: validates `chain_id`, `domain_type`, and `len(chain.domains) < 32` (`ValueError`), builds a uniquely ID'd `DomainBlock` with default `isotype`/`template_key`, inserts at `index` (clamped to `[0, len]`, or appended if `None`), calls `reflow_chain_coordinates()`, and selects the domain.
@@ -342,10 +344,10 @@ The following implementation list enumerates every file to be created or modifie
          * `copy_text_secure(text: str, label: str = "FASTA") -> bool`: cancels any prior `_clipboard_timer` under `_clipboard_lock`, increments `_clipboard_gen += 1`, writes `text` via `pyperclip.copy()`, sets `self.copied_fasta = text`, and schedules `threading.Timer(30.0, self.clear_clipboard, args=(text, self._clipboard_gen))` (`daemon=True`).
          * `clear_clipboard(content_to_clear: Optional[str] = None, gen: Optional[int] = None) -> None`: acquires `self._clipboard_lock`; returns immediately without touching `copied_fasta` or `_clipboard_timer` if `(gen is not None and gen != self._clipboard_gen)` or `(content_to_clear is not None and self.copied_fasta != content_to_clear)`; otherwise clears `self._clipboard_timer = None` and wipes the matching OS clipboard entry inside `try...finally: self.copied_fasta = ""`.
          * `try...finally` clipboard wipes on `.ab` loads and template switches, and `shutdown() -> None` (cancelling `_clipboard_timer`, incrementing `_clipboard_gen`, and calling `clear_clipboard()` under `_clipboard_lock`).
-     * Implement `build_studio_ui(page: ft.Page, controller: AntibodyStudioController) -> None` and `main() -> None`:
+     * Implement `build_studio_ui(page: ft.Page, controller: Optional[AntibodyStudioController] = None) -> AntibodyStudioController` and `main() -> None`:
        * `main()` creates `controller = AntibodyStudioController()`, registers `atexit.register(controller.shutdown)` inside `try:`, invokes `ft.run(lambda page: build_studio_ui(page, controller))`, and runs `controller.shutdown()` + `atexit.unregister(controller.shutdown)` in `finally:`.
        * `build_studio_ui()` appends an async `ft.FilePicker()` to `page.services` (invoked with `await file_picker.pick_files(...)` and `await file_picker.save_file(...)`), enables `page.window.prevent_close = True`, sets `page.window.on_event` to `async def on_window_event(e: ft.WindowEvent) -> None` handling `ft.WindowEventType.CLOSE` by running `controller.shutdown()` inside `try...finally` before `await page.window.destroy()`, and displays notifications via `page.show_dialog(ft.SnackBar(...))`.
-       * **Top Toolbar:** `Project name field` (`max_length=200`, `input_filter=ft.InputFilter(allow=False, regex_string=r"[\r\n]")`), Format Template selector (`ft.Dropdown` using `on_select` across `Monospecific IgG`, `CrossMab`, `IgG-scFv`, `scFv-Fc`, `DVD-Ig`, `BiTE`), `Add Chain`, `Load .ab`, `Save .ab`, `Export FASTA`, `Export Transparent PNG`, and `Copy FASTA (30s Auto-Clear)`.
+       * **Top Toolbar:** `Project name field` (`max_length=200`, `input_filter=ft.InputFilter(allow=False, regex_string=r"[\r\n]")`), Format Template selector (`ft.Dropdown` using `on_select` across `Monospecific IgG`, `CrossMab`, `IgG-scFv`, `scFv-Fc`, `DVD-Ig`, `BiTE`, `Custom Construct`), `Add Chain`, `Load .ab`, `Save .ab`, `Export FASTA`, `Export PNG`, and `Copy FASTA (30s Auto-Clear)`.
        * **Left Panel (Domain Palette & Pairing Controls):** `ft.Draggable` cards (`group="domain_palette"`, `data=f"palette:{domain_type}"` across `VH`, `VL`, `CH1`, `CL`, `Hinge`, `CH2`, `CH3`, `G4S`) and Inter-Chain Pairing Builder/list (`ft.Dropdown` using `on_select`).
        * **Center Panel (Dual-Projection Workspace):** 2D Interactive Schematic Canvas (`ft.Stack` + `flet.canvas.Canvas` [`cv.Canvas`] + `ft.GestureDetector` per domain node built from `build_schematic_scene(project)`, handling `on_tap` for selection and `on_pan_update` reading `e.local_delta.x`/`e.local_delta.y` to call `controller.move_domain()` and set `domain.pinned = True` with live edge redraw) above the Chain Drop-Target Strip (`ft.DragTarget` per `PolypeptideChain` / slot using `group="domain_palette"`, checking `src = page.get_control(e.src_id)` with `if src is None: return` and dispatching `"palette:{domain_type}"` insertions vs. `"chip:{chain.id}:{domain.id}"` N-to-C reorders/cross-chain moves from chain-chip `ft.Draggable` controls sharing `group="domain_palette"`, calling `reflow_chain_coordinates(chain)`).
        * **Right Panel (Domain & Fc Mutation Inspector):**
@@ -354,16 +356,16 @@ The following implementation list enumerates every file to be created or modifie
          * **Sequence & Liability Output:** live per-chain FASTA viewer, `diff_chain_sequences()` EU diffs, and `analyze_chain_developability()` report.
    * **Rationale:** Replaces the legacy TUI with a Flet (`"flet[desktop]>=0.86.0"`) desktop application, sharing `build_schematic_scene()` with Pillow PNG export while preserving `fc-engineer` startup and lock-protected clipboard cleanup.
 
-8. **`./tests/test_logic.py` (Modified)**
+8. **[`./tests/test_logic.py`](../../tests/test_logic.py) (Modified)**
    * **What Changes:** Retain all existing unit tests for `core.py` and `config.py`, and add unit tests for:
      * `get_domain_slice_bounds()`, `slice_constant_domain()`, `get_domain_residue_index()`, `get_domain_eu_position()`, and `apply_domain_mutations()` across `igg1`, `igg2`, `igg3`, and `igg4` (verifying `CH1`, `Hinge`, `CH2`, and `CH3` slice concatenation, `igg3` Hinge local indices `0..6` returning EU `216..222` vs. extended-hinge indices `7..61` [`global 105..159`] returning `None`, and out-of-range `local_idx` rejection).
      * `diff_sequences(..., domain_type=...)`, `analyze_developability(..., domain_type=...)`, `diff_chain_sequences()`, and `analyze_chain_developability()`.
      * `build_format_template()` for all six formats (`igg`, `crossmab`, `igg_scfv`, `scfv_fc`, `dvd_ig`, `bite`) plus `"custom"` (and `ValueError` on invalid `format_type`/`isotype`/`allotype`), and fallback vs. custom `VH`/`VL`/`G4S` validation (rejecting cross-type keys, invalid sequences, and `> 2000` lengths on `G4S`).
      * Cross-domain mutation routing (`route_mutations_to_chain()` covering all 9 `CH2`+`CH3` presets in `mutants.yaml`: `GAALIELS`, `SDIEALGALS`, `VLPLL`, `LPLL`, `LET`, `LLEK`, `LPIL`, `QL`, `FcRnKO`, alongside `LALA`, `Knob`, `Hole`), `get_effective_domain_mutations()` EU filtering, `remove_preset_from_chain()` preserving shared tokens across `LALA` + `PGLALA` and `custom_mutations`, and Phase 1 atomic rollback on truncated `cetuximab` `K447` and `igg3` `H435A`.
-     * `reflow_chain_coordinates()` preserving `pinned=True` placements, `remove_domain_from_chain()` / `remove_chain_from_project()` pruning orphaned pairings, `build_schematic_scene()`, `build_preset_map()`, and `add_file_custom_mutation()` duplicate/shadow rejection (verifying `src/fc_engineer/data/mutants.yaml` on disk is not modified).
-   * **Rationale:** Verifies domain-level EU residue indexing, cross-domain preset routing, schematic geometry, and all six antibody format topologies.
+     * `reflow_chain_coordinates()` preserving `pinned=True` placements, `remove_domain_from_chain()` / `remove_chain_from_project()` pruning orphaned pairings, `build_schematic_scene()`, `build_preset_map()`, `add_file_custom_mutation()` duplicate/shadow rejection (verifying `src/fc_engineer/data/mutants.yaml` on disk is not modified), and `test_package_version_alignment()` verifying `pyproject.toml` `[project].version` and `fc_engineer.__version__` parity (`"0.0.1"`).
+   * **Rationale:** Verifies domain-level EU residue indexing, cross-domain preset routing, schematic geometry, package version parity, and all antibody format topologies.
 
-9. **`./tests/test_exporters.py` (Modified)**
+9. **[`./tests/test_exporters.py`](../../tests/test_exporters.py) (Modified)**
    * **What Changes:** Retain existing tests for `sanitize_locus()`, `format_genbank()`, and `format_csv_report()`, and add tests for:
      * `format_project_fasta()`, `save_fasta_file()`, and `.ab` round-trip serialization and parsing (`serialize_ab_project()` -> `parse_ab_project()` and `save_ab_file()` -> `load_ab_file()`) verifying exact restoration of chains, domains, 2D `(x, y)` coordinates, `pinned` flags, inter-chain pairings, `mutation_history`, applied `file_custom_mutations`, and per-chain FASTA sequences.
      * Security and boundary rejection tests on `.ab` saving/loading and FASTA export:
@@ -373,7 +375,7 @@ The following implementation list enumerates every file to be created or modifie
      * `export_schematic_png()` and `save_schematic_png()` verifying valid PNG header signature (`\x89PNG\r\n\x1a\n`), `RGBA` color mode, transparent background pixel `(0, 0, 0, 0)` at corners, non-transparent rendered domain pixels, and rejection of out-of-range/invalid `scale` or dimensions exceeding `MAX_PNG_DIMENSION` (`8192`).
    * **Rationale:** Ensures `.ab` file persistence and transparent `.png` / FASTA exports satisfy functional and `AGENTS.md` Sentinel security requirements.
 
-10. **`./tests/test_ui.py` (Modified)**
+10. **[`./tests/test_ui.py`](../../tests/test_ui.py) (Modified)**
     * **What Changes:** Replace the Textual `MutantApp` pilot tests with controller tests and headless async Flet page harness tests (`pytest-asyncio`):
       * Controller unit tests (`AntibodyStudioController` with mocked `pyperclip` and deterministic timer callbacks):
         * Format switching, chain/domain addition/removal and selection reset, N-to-C reordering and `move_domain_across_chains()`, canvas coordinate pinning (`move_domain()`), and `update_domain_properties()` atomic validation rollback.
@@ -382,10 +384,14 @@ The following implementation list enumerates every file to be created or modifie
       * Headless async page tests (`build_studio_ui(fake_page, controller)`): lightweight stub `ft.Page` with `AsyncMock` on `fake_page.window.destroy` verifying `controls`, `services`, `e.src_id` DnD dispatch, `await page.window.on_event(...)`, and `update()` calls without launching a desktop window.
     * **Rationale:** Aligns UI verification with Flet controller state and async headless widget wiring after removing Textual.
 
-11. **`./README.md` (Modified)**
+11. **[`./README.md`](../../README.md) (Modified)**
     * **What Changes:** Update the project overview, `사용법`, `주요 조작 및 내보내기` (replacing `단축키` to note that legacy TUI keyboard shortcuts are replaced by the Flet top toolbar buttons, domain palette drag-and-drop, and 2D canvas mouse gestures), `데이터 커스터마이징` (documenting read-only `mutants.yaml` vs. `.ab`-scoped `file_custom_mutations`), and `프로젝트 구조` (`designer.py`, updated `exporters.py`, `app.py`) sections alongside the feature list to document the Flet desktop GUI, drag-and-drop chain/domain assembly, the six antibody format templates, `.ab` project files, and transparent `.png` / FASTA exports.
     * **Rationale:** Keeps user-facing documentation accurate after replacing the TUI with the Flet GUI.
 
-12. **`./AGENTS.md` (Modified)**
+12. **[`./AGENTS.md`](../../AGENTS.md) (Modified)**
     * **What Changes:** Update Project Overview, Tech Stack (Flet, Pillow instead of Textual), Architecture (`designer.py`, `app.py`, `exporters.py`), `User Interface Guidelines` (replacing legacy Textual `Enter`/`Ctrl+Y`/`Ctrl+C` shortcut rules with Flet toolbar actions, drag-and-drop gestures, `page.show_dialog(ft.SnackBar(...))`, and async window-close + 30s clipboard auto-clear guidelines), `Data Management`, and `Testing Practices` while preserving the Sentinel security log history.
     * **Rationale:** Keeps repository agent context aligned with the Flet architecture and file layout.
+
+13. **[`./.github/workflows/release.yml`](../../.github/workflows/release.yml) (Created)**
+    * **What Changes:** Add a tag-triggered GitHub Actions release pipeline (`push.tags: ["v*.*.*"]`, `permissions: contents: write`, `runs-on: ubuntu-latest`) using `actions/checkout@v4`, `astral-sh/setup-uv@v5` (`enable-cache: true`), `uv python install 3.14`, `uv sync --locked`, tag-vs-version parity checks (`GITHUB_REF_NAME` stripped `v` == `pyproject.toml` `[project].version` == `fc_engineer.__version__`), `uv run bandit -r src/`, `uv run pytest`, `uv build`, `dist/SHA256SUMS.txt` generation, and `softprops/action-gh-release@v2` (`generate_release_notes: true`, `files: dist/*`).
+    * **Rationale:** Automates verification, distribution artifact building, checksum generation, and GitHub Release publishing whenever a semantic release tag such as `v0.0.1` is pushed.
