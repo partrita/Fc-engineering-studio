@@ -7,7 +7,7 @@
 ```mermaid
 flowchart TD
     User["User Desktop Interaction (Drag & Drop / Canvas / Inspector)"] --> App["AntibodyStudioController & build_studio_ui (src/fc_engineer/app.py)"]
-    Config["config.py (MAX_FILE_SIZE=1 MiB, NoAliasSafeLoader)"] -->|"import read <= 1 MiB"| SeqYAML["sequences.yaml and mutants.yaml"]
+    Config["config.py (MAX_FILE_SIZE=1 MiB, NoAliasSafeLoader)"] -->|"import read <= 1 MiB"| SeqYAML["sequences.yaml, mutants.yaml, themes.yaml"]
     Config -->|"SEQUENCES, COMMON_MUTATIONS, VARIABLE_DOMAINS, LIGHT_CONSTANT_DOMAINS, DEFAULT_LINKERS"| Designer["Domain Assembly, EU Router & Scene Model (src/fc_engineer/designer.py)"]
     Config --> App
     Designer -->|"core.py domain slice & EU mapping"| Core["EU Numbering and Mutation Engine (src/fc_engineer/core.py)"]
@@ -37,14 +37,14 @@ flowchart TD
 * **Flet Desktop GUI & Controller ([`src/fc_engineer/app.py`](./src/fc_engineer/app.py)):**
   * [`src/fc_engineer/app.py:AntibodyStudioController`](./src/fc_engineer/app.py), [`src/fc_engineer/app.py:build_studio_ui`](./src/fc_engineer/app.py), [`src/fc_engineer/app.py:main`](./src/fc_engineer/app.py)
 * **Domain Assembly & Scene Model ([`src/fc_engineer/designer.py`](./src/fc_engineer/designer.py)):**
-  * Constants: `MAX_CHAINS`, `MAX_DOMAINS_PER_CHAIN`, `MAX_PAIRINGS`, `MAX_FILE_CUSTOM_MUTATIONS`, `MAX_CUSTOM_SEQ_LENGTH`, `MAX_EXPORT_SEQUENCE_LENGTH`, `MAX_METADATA_LENGTH`, `MAX_HISTORY_ENTRIES`, `MAX_COORD`, `SCENE_PADDING`, `VALID_DOMAIN_TYPES`, `NON_CONSTANT_DOMAIN_TYPES`, `VALID_PAIRING_TYPES`, `VALID_FORMAT_TYPES`, `ALLOWED_TEMPLATE_KEYS_BY_TYPE`, `DEFAULT_TEMPLATE_KEYS`, `DOMAIN_STYLE_MAP`
-  * Dataclasses: `DomainBlock`, `PolypeptideChain`, `InterChainPairing`, `AntibodyProject`, `SchematicNode`, `SchematicEdge`, `SchematicPairingEdge`, `SchematicScene`
-  * Key functions: `build_format_template`, `build_preset_map`, `get_effective_domain_mutations`, `resolve_domain_base_sequence`, `resolve_domain_sequence`, `assemble_chain_sequence`, `route_mutations_to_chain`, `remove_preset_from_chain`, `remove_domain_from_chain`, `remove_chain_from_project`, `diff_chain_sequences`, `analyze_chain_developability`, `add_file_custom_mutation`, `reflow_chain_coordinates`, `build_schematic_scene`
+  * Constants: `MAX_CHAINS`, `MAX_DOMAINS_PER_CHAIN`, `MAX_PAIRINGS`, `MAX_FILE_CUSTOM_MUTATIONS`, `MAX_CUSTOM_SEQ_LENGTH`, `MAX_EXPORT_SEQUENCE_LENGTH`, `MAX_METADATA_LENGTH`, `MAX_HISTORY_ENTRIES`, `MAX_COORD`, `SCENE_PADDING`, `VALID_DOMAIN_TYPES`, `NON_CONSTANT_DOMAIN_TYPES`, `VALID_PAIRING_TYPES`, `VALID_SHAPES`, `VALID_ORIENTATIONS`, `VALID_FORMAT_TYPES`, `ALLOWED_TEMPLATE_KEYS_BY_TYPE`, `DEFAULT_TEMPLATE_KEYS`, `DOMAIN_STYLE_MAP`, `DEFAULT_SCHEMATIC_THEME`
+  * Dataclasses: `DomainBlock`, `PolypeptideChain`, `InterChainPairing`, `AntibodyProject`, `DomainVisualStyle`, `SchematicTheme`, `SchematicNode`, `SchematicEdge`, `SchematicPairingEdge`, `SchematicScene`
+  * Key functions: `build_format_template`, `build_preset_map`, `get_effective_domain_mutations`, `resolve_domain_base_sequence`, `resolve_domain_sequence`, `assemble_chain_sequence`, `route_mutations_to_chain`, `remove_preset_from_chain`, `remove_domain_from_chain`, `remove_chain_from_project`, `diff_chain_sequences`, `analyze_chain_developability`, `add_file_custom_mutation`, `reflow_chain_coordinates`, `reflow_project_coordinates`, `compute_hexagon_vertices`, `clone_chain_in_project`, `swap_crossmab_ch1_cl`, `apply_heterodimer_pair`, `build_schematic_scene`
 * **Core Sequence & EU Numbering API ([`src/fc_engineer/core.py`](./src/fc_engineer/core.py)):**
   * Constants: `EU_START` (`118`), `IGG3_HINGE_EXTRA` (`47`), `IGG3_GAP_END` (`230`), `CONSTANT_DOMAIN_EU_RANGES`, `MAX_MUTATION_STRING_LENGTH` (`1000`), `MAX_MUTATIONS` (`50`), `MAX_BATCH_ITEMS` (`20`), `MAX_BATCH_LENGTH` (`2000`)
   * Functions: `get_residue_index`, `get_eu_position`, `get_domain_slice_bounds`, `slice_constant_domain`, `get_domain_residue_index`, `get_domain_eu_position`, `diff_sequences`, `parse_mutation`, `parse_mutation_list`, `apply_mutations`, `apply_domain_mutations`, `generate_batch`, `analyze_developability`
 * **Configuration & Export Formatters ([`src/fc_engineer/config.py`](./src/fc_engineer/config.py), [`src/fc_engineer/exporters.py`](./src/fc_engineer/exporters.py)):**
-  * Config: `MAX_FILE_SIZE` (`1 MiB`), `NoAliasSafeLoader`, `load_yaml_data`, `load_domain_templates`, `log_sanitized_error`, `SEQUENCES`, `COMMON_MUTATIONS`, `VARIABLE_DOMAINS`, `LIGHT_CONSTANT_DOMAINS`, `DEFAULT_LINKERS`, `logger`
+  * Config: `MAX_FILE_SIZE` (`1 MiB`), `NoAliasSafeLoader`, `load_yaml_data`, `load_domain_templates`, `load_theme_presets`, `parse_theme_yaml`, `serialize_theme_yaml`, `load_theme_file`, `save_theme_file`, `log_sanitized_error`, `SEQUENCES`, `COMMON_MUTATIONS`, `VARIABLE_DOMAINS`, `LIGHT_CONSTANT_DOMAINS`, `DEFAULT_LINKERS`, `logger`
   * Exporters: `MAX_EXPORT_SEQUENCE_LENGTH` (`10000`), `MAX_METADATA_LENGTH` (`200`), `MAX_PNG_DIMENSION` (`8192`), `sanitize_locus`, `format_genbank`, `format_csv_report`, `format_project_fasta`, `save_fasta_file`, `serialize_ab_project`, `parse_ab_project`, `save_ab_file`, `load_ab_file`, `export_schematic_png`, `save_schematic_png`
 
 ## Invariants
@@ -71,7 +71,7 @@ uv run pytest
 
 ## 주요 기능
 
-- **7종 항체 및 이중항체 포맷 템플릿**: `Monospecific IgG`, `CrossMab`, `IgG-scFv`, `scFv-Fc`, `DVD-Ig`, `BiTE`, `Custom Construct`
+- **10종 항체 및 이중·다중특이성 항체 포맷 템플릿**: `Monospecific IgG`, `CrossMab`, `IgG-scFv`, `scFv-Fc`, `DVD-Ig`, `BiTE`, `2+1 T-Cell Engager`, `Trispecific IgG-scFv`, `Fab-IgG`, `Custom Construct`
 - **모듈형 드래그 앤 드롭 체인/도메인 조립**: `VH`, `VL`, `CH1`, `CL` (`κ`/`λ`), `Hinge`, `CH2`, `CH3`, `G4S` 블록을 2D 캔버스 및 N→C 체인 스트립에서 자유롭게 배치·이동·페어링
 - **유연한 Variable / Linker 편집**: 사용자 정의 `VH`, `VL`, `G4S` 서열 입력(미입력 시 내장 Target Arm A/B 및 `(GGGGS)3` 기본값 자동 사용)
 - **도메인 인식 EU Numbering & 교차 도메인 변이 라우팅**: `LALA`, `YTE`, `LS`, `GAALIELS`, `Knob`/`Hole` 등 프리셋 및 EU 변이 입력 시 `Hinge`/`CH2`/`CH3`에 원자적으로 적용 (부분 실패 시 롤백)
@@ -81,7 +81,7 @@ uv run pytest
 
 ## 설치 및 실행
 
-* **요구 사양:** Python `>= 3.14` ([pyproject.toml](./pyproject.toml)), [uv](https://github.com/astral-sh/uv)
+* **요구 사양:** Python `>= 3.12` ([pyproject.toml](./pyproject.toml)), [uv](https://github.com/astral-sh/uv)
 
 ```bash
 # 의존성 설치 (flet[desktop], pillow, pyyaml, pyperclip)
@@ -99,10 +99,9 @@ uv run pytest
 
 ## 주요 조작 및 내보내기
 
-1. **상단 툴바**: 프로젝트 이름 편집, 포맷 템플릿 전환(`Monospecific IgG` / `CrossMab` / `IgG-scFv` / `scFv-Fc` / `DVD-Ig` / `BiTE` / `Custom Construct`), `Add Chain`, `Load .ab`, `Save .ab`, `Export FASTA`, `Export PNG`, `Copy FASTA (30s Auto-Clear)`.
-2. **좌측 도메인 팔레트 & 페어링 빌더**: 8종 도메인 블록을 중앙 체인 스트립 슬롯으로 드래그하여 추가하고, 체인 간/체인 내 `VH_VL`, `CH1_CL`, `HINGE_DISULFIDE`, `CH3_DIMER` 페어링을 구성합니다.
-3. **중앙 2D 캔버스 & 체인 스트립**: 캔버스에서 도메인을 마우스로 드래그해 2D 위치를 고정(`pinned=True`)하거나, 체인 스트립에서 도메인 순서를 변경 및 다른 체인으로 이동할 수 있습니다.
-4. **우측 인스펙터**: 선택한 도메인의 Isotype(`igg1`–`igg4`)/Allotype(`WT(P01857-1)`, `WT(P01859-1)`, `WT(P01860-1)`, `WT(P01861-1)`, `trastzumab`, `rituximab`, `cetuximab`, `g1m17`, `g1m3`, `g1m1`), `CL` 서브타입, `VH`/`VL`/`G4S` 서열, Fc 프리셋(선택적 `Apply to all heavy chains`), 파일 전용 커스텀 변이 등록, 실시간 서열 diff 및 PTM 점검 결과를 확인합니다.
+1. **`Studio` 탭 (2D 캔버스 · 체인 스트립 · 통합 사이드패널)**: 수직(`N -> C`) 항체 모식도, `-S-S-` 시스테인 이황화 결합 표시, 체인 스트립 드래그/빠른 추가(`+`)와 함께 우측 사이드패널(`Inspector` | `Pairings` 하위 탭)에서 선택 도메인의 Isotype(`igg1`–`igg4`)/Allotype, `CL` 서브타입, `VH`/`VL`/`G4S` 서열, 활성 Fc 변이 요약 + `Edit Fc Mutations...` 모달(또는 캔버스 도메인 더블클릭), 실시간 서열 diff·PTM 점검 및 페어링(`VH_VL`, `CH1_CL`, `HINGE_DISULFIDE`, `CH3_DIMER`, `DISULFIDE_BOND`)을 편집합니다.
+2. **`Project` 탭 (2단 카드 그리드 · 파일 작업 · 다중특이성 빌더)**: 좌측 컬럼의 `Project Setup`(프로젝트 이름, 10종 포맷 템플릿, `Add Chain`, `Clone Selected Chain`)·`Multispecific & Heterodimer Builder`(`Heterodimer Fc Wizard`, `CrossMab CH1 <-> CL Swap`) 카드와 우측 컬럼의 직접 실행 버튼 카드(`Project Files (.ab)`, `Sequence & Schematic Export`)를 제공합니다.
+3. **`Style` 탭**: `Light / Dark Mode` 전환(기본 Light), 5종 모식도 테마 프리셋(`Claude Code`, `Classic Blueprint`, `Monochrome Publication`, `High Contrast`, `Pastel Candy`), 도메인별 색상·테두리·크기·5종 도형 커스터마이징 및 2D 모식도 전용 `.yaml` 테마 파일 저장/불러오기(`Schematic Theme Files (.yaml)`)를 지원합니다.
 
 ## 프로젝트 구조
 
@@ -126,12 +125,13 @@ src/
     ├── exporters.py         # .ab 프로젝트 저장/파싱, multi-FASTA, GenBank, CSV, 투명 PNG 렌더러
     └── data/
         ├── sequences.yaml   # IgG1-4 상수 영역 및 기본 VH/VL/CL/G4S 서열
-        └── mutants.yaml     # 읽기 전용 기본 Fc 변이 프리셋 데이터
+        ├── mutants.yaml     # 읽기 전용 기본 Fc 변이 프리셋 데이터
+        └── themes.yaml      # 내장 모식도 테마 프리셋 (Claude Code 등 5종)
 tests/                       # 단위 및 헤드리스 UI 테스트
 pyproject.toml               # 프로젝트 설정 및 의존성 정의
 ```
 
 ## 데이터 커스터마이징
 
-* 패키지 기본 서열 및 읽기 전용 프리셋은 [sequences.yaml](./src/fc_engineer/data/sequences.yaml) 및 [mutants.yaml](./src/fc_engineer/data/mutants.yaml)에서 로드됩니다.
+* 패키지 기본 서열, 변이 프리셋 및 내장 테마는 [sequences.yaml](./src/fc_engineer/data/sequences.yaml), [mutants.yaml](./src/fc_engineer/data/mutants.yaml), [themes.yaml](./src/fc_engineer/data/themes.yaml)에서 로드됩니다.
 * 작업 중 사용자가 추가한 커스텀 변이는 패키지 `mutants.yaml`을 변경하지 않고 현재 작업 중인 `.ab` 파일의 `file_custom_mutations`에만 저장됩니다.

@@ -49,7 +49,7 @@ def _walk_controls(root):
     if root is None:
         return
     yield root
-    for attr in ("controls",):
+    for attr in ("controls", "tabs", "items"):
         children = getattr(root, attr, None)
         if isinstance(children, list):
             for child in children:
@@ -203,6 +203,144 @@ class TestAntibodyStudioController:
         assert loaded.domain_spacing == 6.0
         assert loaded.chain_spacing == 84.0
 
+    def test_light_dark_mode_switching(self):
+        fake_page = FakePage()
+        ctrl = AntibodyStudioController("igg")
+        build_studio_ui(fake_page, ctrl)
+        assert fake_page.theme_mode == ft.ThemeMode.LIGHT
+        assert fake_page.bgcolor == "#F8FAFC"
+
+        all_controls = list(_walk_controls(fake_page.controls[0]))
+        switches = [c for c in all_controls if isinstance(c, ft.Switch)]
+        light_switch = next(s for s in switches if "Light Mode" in (s.label or ""))
+        light_switch.on_change(SimpleNamespace(control=SimpleNamespace(value=False)))
+        assert ctrl.theme_mode == "dark"
+        assert fake_page.theme_mode == ft.ThemeMode.DARK
+        assert fake_page.bgcolor == "#141413"
+
+        # Verify chain strip chips have legible dark-mode text color (#FAF9F5) on #262521
+        dark_controls = list(_walk_controls(fake_page.controls[0]))
+        chip_draggables = [c for c in dark_controls if isinstance(c, ft.Draggable) and str(c.data).startswith("chip:")]
+        assert len(chip_draggables) == 14
+        unselected_chip = next(d for d in chip_draggables if d.data != "chip:LC_1:lc1_vl")
+        assert unselected_chip.content.bgcolor == "#262521"
+        assert unselected_chip.content.content.color == "#FAF9F5"
+
+        light_switch.on_change(SimpleNamespace(control=SimpleNamespace(value=True)))
+        assert ctrl.theme_mode == "light"
+        assert fake_page.theme_mode == ft.ThemeMode.LIGHT
+        assert fake_page.bgcolor == "#F8FAFC"
+
+    def test_project_tab_2col_direct_action_cards_without_file_dropdown(self):
+        fake_page = FakePage()
+        ctrl = AntibodyStudioController("igg")
+        build_studio_ui(fake_page, ctrl)
+
+        all_controls = list(_walk_controls(fake_page.controls[0]))
+        file_menus = [
+            c
+            for c in all_controls
+            if isinstance(c, ft.PopupMenuButton) and c.tooltip == "File Menu"
+        ]
+        assert file_menus == []
+
+        btn_texts = {
+            getattr(c, "content", None)
+            for c in all_controls
+            if isinstance(c, (ft.Button, ft.OutlinedButton))
+        }
+        for expected in (
+            "Load .ab",
+            "Save .ab",
+            "Export FASTA",
+            "Copy FASTA (30s Auto-Clear)",
+            "Export PNG",
+            "Load Theme .yaml",
+            "Save Theme .yaml",
+            "Edit Fc Mutations...",
+        ):
+            assert expected in btn_texts
+
+        tabs = [c for c in all_controls if isinstance(c, ft.Tab)]
+        assert [t.label for t in tabs[:3]] == ["Studio", "Project", "Style"]
+
+    def test_fc_mutations_modal_via_button_and_double_tap(self):
+        fake_page = FakePage()
+        ctrl = AntibodyStudioController("igg")
+        build_studio_ui(fake_page, ctrl)
+
+        # Tap hc1_ch2 GestureDetector on canvas to select HC_1, then open modal via Edit Fc Mutations...
+        gestures = [c for c in _walk_controls(fake_page.controls[0]) if isinstance(c, ft.GestureDetector)]
+        hc1_ch2_gesture = next(
+            g
+            for g in gestures
+            if any(isinstance(t, ft.Text) and t.value == "CH2" for t in _walk_controls(g))
+        )
+        hc1_ch2_gesture.on_tap(SimpleNamespace())
+        assert ctrl.selected_chain_id == "HC_1"
+
+        all_controls = list(_walk_controls(fake_page.controls[0]))
+        edit_btn = next(
+            c
+            for c in all_controls
+            if isinstance(c, ft.Button) and getattr(c, "content", None) == "Edit Fc Mutations..."
+        )
+        edit_btn.on_click(SimpleNamespace())
+        assert len(fake_page.dialogs) == 1
+        dlg = fake_page.dialogs[-1]
+        assert isinstance(dlg, ft.AlertDialog)
+
+        modal_controls = list(_walk_controls(dlg.content))
+        lala_cb = next(
+            c
+            for c in modal_controls
+            if isinstance(c, ft.Checkbox) and (c.label or "").startswith("LALA ")
+        )
+        lala_cb.on_change(SimpleNamespace(control=SimpleNamespace(value=True)))
+        assert "LALA" in ctrl._get_domain("HC_1", "hc1_ch2")[1].applied_presets
+
+        # Also open via double-tap on a canvas GestureDetector
+        gestures = [c for c in all_controls if isinstance(c, ft.GestureDetector)]
+        assert gestures and gestures[0].on_double_tap is not None
+        gestures[0].on_double_tap(SimpleNamespace())
+        assert len(fake_page.dialogs) == 2
+
+    def test_unpin_reset_layout_and_exposed_export_spacing_controls(self, tmp_path):
+        fake_page = FakePage()
+        ctrl = AntibodyStudioController("igg")
+        build_studio_ui(fake_page, ctrl)
+
+        # Negative drag clamps to 0.0 (no hit-target desync), and unpin/reset_layout restores reflow
+        ctrl.move_domain("LC_1", "lc1_vl", -50.0, 220.0)
+        dom = ctrl._get_domain("LC_1", "lc1_vl")[1]
+        assert dom.x == 0.0 and dom.pinned is True
+        ctrl.unpin_domain("LC_1", "lc1_vl")
+        assert dom.pinned is False and dom.x == 40.0
+
+        ctrl.move_domain("HC_1", "hc1_ch2", 500.0, 500.0)
+        assert ctrl._get_domain("HC_1", "hc1_ch2")[1].pinned is True
+        ctrl.reset_layout()
+        assert ctrl._get_domain("HC_1", "hc1_ch2")[1].pinned is False
+
+        # Export GenBank & CSV via controller
+        gb_out = tmp_path / "out.gb"
+        csv_out = tmp_path / "out.csv"
+        ctrl.save_genbank(str(gb_out))
+        ctrl.save_csv(str(csv_out))
+        assert gb_out.is_file() and csv_out.is_file()
+
+        all_controls = list(_walk_controls(fake_page.controls[0]))
+        btn_texts = {
+            getattr(c, "content", None)
+            for c in all_controls
+            if isinstance(c, (ft.Button, ft.OutlinedButton))
+        }
+        assert "Export GenBank (.gb)" in btn_texts
+        assert "Export CSV (.csv)" in btn_texts
+        assert "Reset Layout" in btn_texts
+        assert any(isinstance(c, ft.Dropdown) and c.label == "PNG Scale" for c in all_controls)
+        assert len([c for c in all_controls if isinstance(c, ft.Slider)]) == 2
+
     def test_clipboard_security_timer_race_and_shutdown(self, monkeypatch):
         fake_clip = {"val": ""}
         monkeypatch.setattr("fc_engineer.app.pyperclip.copy", lambda txt: fake_clip.__setitem__("val", txt))
@@ -272,31 +410,47 @@ async def test_build_studio_ui_headless_dnd_pan_and_window_close():
     ctrl = AntibodyStudioController("igg")
     returned = build_studio_ui(fake_page, ctrl)
     assert returned is ctrl
-    assert fake_page.title == "Fc Engineering Studio"
+    assert "Fc Engineering Studio" in fake_page.title
     assert fake_page.window.prevent_close is True
     assert len(fake_page.services) == 1
     assert isinstance(fake_page.services[0], ft.FilePicker)
     assert len(fake_page.controls) == 1
 
-    # Locate DragTargets & GestureDetectors inside rendered tree
+    # Locate DragTargets, GestureDetectors & quick-add PopupMenuButtons inside rendered tree
     all_controls = list(_walk_controls(fake_page.controls[0]))
     drag_targets = [c for c in all_controls if isinstance(c, ft.DragTarget)]
     gestures = [c for c in all_controls if isinstance(c, ft.GestureDetector)]
     draggables = [c for c in all_controls if isinstance(c, ft.Draggable)]
+    quick_add_menus = [
+        c for c in all_controls if isinstance(c, ft.PopupMenuButton) and c.tooltip == "Quick Add Domain"
+    ]
     assert len(drag_targets) >= 4
     assert len(gestures) >= 14  # 14 domains in Monospecific IgG
-    assert any(d.data == "palette:VH" for d in draggables)
+    assert any(str(d.data).startswith("chip:") for d in draggables)
+    assert len(quick_add_menus) == 4
 
     # Guarded DnD drop: e.src_id = None must safely no-op (IR3-M6)
     hc1_domains_before = len(ctrl._get_chain("HC_1").domains)
     drag_targets[0].on_accept(SimpleNamespace(src_id=None))
     assert len(ctrl._get_chain("HC_1").domains) == hc1_domains_before
 
-    # Valid DnD drop from palette onto LC_1 first slot inserts domain & refreshes
-    vh_draggable = next(d for d in draggables if d.data == "palette:G4S")
-    fake_page.register_control(999, vh_draggable)
-    drag_targets[0].on_accept(SimpleNamespace(src_id=999))
+    # Valid quick-add from LC_1 '+' menu inserts G4S domain & refreshes
+    g4s_item = next(it for it in quick_add_menus[0].items if it.content == "G4S")
+    g4s_item.on_click(SimpleNamespace())
     assert len(ctrl._get_chain("LC_1").domains) == 3
+
+    # Valid chip DnD reorder within LC_1 moves domain to first slot
+    added_dom_id = ctrl._get_chain("LC_1").domains[-1].id
+    rebuilt_draggables = [
+        c for c in _walk_controls(fake_page.controls[0]) if isinstance(c, ft.Draggable)
+    ]
+    lc1_last_chip = next(d for d in rebuilt_draggables if d.data == f"chip:LC_1:{added_dom_id}")
+    fake_page.register_control(999, lc1_last_chip)
+    rebuilt_targets = [
+        c for c in _walk_controls(fake_page.controls[0]) if isinstance(c, ft.DragTarget)
+    ]
+    rebuilt_targets[0].on_accept(SimpleNamespace(src_id=999))
+    assert ctrl._get_chain("LC_1").domains[0].domain_type == "G4S"
 
     # Re-collect rebuilt canvas GestureDetectors after render_workspace()
     rebuilt_gestures = [
@@ -319,7 +473,62 @@ async def test_build_studio_ui_headless_dnd_pan_and_window_close():
     fake_page.window.destroy.assert_not_awaited()
     assert ctrl.copied_fasta == "SENSITIVE"
 
-    # CLOSE window event triggers shutdown and awaits window.destroy()
+    # CLOSE window event when dirty opens Unsaved Changes dialog; Discard & Close triggers shutdown + destroy()
     await fake_page.window.on_event(SimpleNamespace(type=ft.WindowEventType.CLOSE))
+    fake_page.window.destroy.assert_not_awaited()
+    close_dlg = fake_page.dialogs[-1]
+    assert isinstance(close_dlg, ft.AlertDialog)
+    discard_btn = next(b for b in close_dlg.actions if getattr(b, "content", None) == "Discard & Close")
+    await discard_btn.on_click(SimpleNamespace())
     fake_page.window.destroy.assert_awaited_once()
     assert ctrl.copied_fasta == ""
+
+
+def test_controller_undo_redo_macros_batch_and_ui_palette(tmp_path):
+    ctrl = AntibodyStudioController("igg")
+    assert not ctrl.can_undo
+    assert not ctrl.can_redo
+
+    ctrl.rename_chain("HC_1", "Heavy_A")
+    assert ctrl._get_chain("HC_1").name == "Heavy_A"
+    assert ctrl.can_undo
+    assert ctrl.undo()
+    assert ctrl._get_chain("HC_1").name != "Heavy_A"
+    assert ctrl.redo()
+    assert ctrl._get_chain("HC_1").name == "Heavy_A"
+
+    ctrl.reorder_chain("HC_1", 1)
+    assert ctrl.project.chains[2].id == "HC_1"
+
+    added = ctrl.insert_macro_block("LC_1", "scfv")
+    assert len(added) == 3
+    assert [d.domain_type for d in added] == ["VH", "G4S", "VL"]
+
+    batch_csv = tmp_path / "batch.csv"
+    cnt, errs = ctrl.export_batch_csv("HC_1", "hc1_ch2", "L234A/L235A\nM252Y/S254T/T256E", str(batch_csv))
+    assert cnt == 2
+    csv_text = batch_csv.read_text(encoding="utf-8")
+    assert "L234A/L235A" in csv_text
+    assert "MW_kDa" in csv_text
+
+    fake_page = FakePage()
+    build_studio_ui(fake_page, ctrl)
+    all_controls = list(_walk_controls(fake_page.controls[0]))
+    palette_draggables = [
+        c for c in all_controls if isinstance(c, ft.Draggable) and str(c.data).startswith("palette:")
+    ]
+    assert len(palette_draggables) == 8
+    assert any(isinstance(c, ft.IconButton) and c.icon == ft.Icons.UNDO for c in all_controls)
+    assert any(isinstance(c, ft.IconButton) and c.icon == ft.Icons.REDO for c in all_controls)
+
+    # Empty-canvas placeholder renders cleanly without KeyError on active_pal
+    empty_ctrl = AntibodyStudioController("custom")
+    empty_ctrl.project.chains.clear()
+    empty_ctrl._reset_selection()
+    empty_page = FakePage()
+    build_studio_ui(empty_page, empty_ctrl)
+    empty_texts = [
+        c.value for c in _walk_controls(empty_page.controls[0]) if isinstance(c, ft.Text)
+    ]
+    assert "Canvas is empty" in empty_texts
+

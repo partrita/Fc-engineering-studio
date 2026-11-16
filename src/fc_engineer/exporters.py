@@ -15,6 +15,7 @@ from fc_engineer import config
 from fc_engineer.core import (
     CONSTANT_DOMAIN_EU_RANGES,
     diff_sequences,
+    get_domain_eu_position,
     get_domain_residue_index,
     get_eu_position,
     parse_mutation_list,
@@ -192,7 +193,9 @@ def format_csv_report(
     return buf.getvalue()
 
 
-def format_project_fasta(project: AntibodyProject) -> Tuple[str, List[str]]:
+def format_project_fasta(
+    project: AntibodyProject, header_style: str = "project_chain"
+) -> Tuple[str, List[str]]:
     """Format expressible per-chain polypeptide sequences into multi-FASTA output."""
     if not isinstance(project, AntibodyProject):
         return "", ["Project object is required."]
@@ -212,17 +215,31 @@ def format_project_fasta(project: AntibodyProject) -> Tuple[str, List[str]]:
             errors.extend(chain_errs)
             continue
         safe_chain = _sanitize_header_text(chain.name, chain.id)
-        records.append(f">{safe_project}_{safe_chain}\n{seq}")
+        if header_style == "chain_only":
+            hdr = safe_chain
+        elif header_style == "detailed":
+            isos = ",".join(sorted({d.isotype for d in chain.domains if d.isotype}))
+            muts = ",".join(
+                p for d in chain.domains for p in (d.applied_presets + d.custom_mutations)
+            )
+            hdr = _sanitize_header_text(
+                f"{safe_project}_{safe_chain}_{isos}_{muts or 'WT'}", safe_chain
+            )
+        else:
+            hdr = f"{safe_project}_{safe_chain}"
+        records.append(f">{hdr}\n{seq}")
 
     if errors:
         return "", errors
     return "\n".join(records) + "\n", []
 
 
-def save_fasta_file(path: str, project: AntibodyProject) -> None:
+def save_fasta_file(
+    path: str, project: AntibodyProject, header_style: str = "project_chain"
+) -> None:
     """Export project multi-FASTA sequences safely to disk."""
     resolved = _validate_file_path(path, (".fasta", ".fa"), auto_append=True)
-    fasta_text, errors = format_project_fasta(project)
+    fasta_text, errors = format_project_fasta(project, header_style=header_style)
     if errors:
         raise ValueError("; ".join(errors))
     if len(fasta_text.encode("utf-8")) > config.MAX_FILE_SIZE:
@@ -802,6 +819,74 @@ def save_ab_file(path: str, project: AntibodyProject) -> None:
         raise ValueError(f"Failed to write '{os.path.basename(resolved)}'.") from None
 
 
+def save_genbank_file(path: str, project: AntibodyProject) -> None:
+    """Export all assembled chains as a multi-record GenBank (.gb) file."""
+    resolved = _validate_file_path(path, (".gb", ".gbk"), auto_append=True)
+    preset_map = build_preset_map(project)
+    records: List[str] = []
+    for chain in project.chains:
+        seq, _, errs = assemble_chain_sequence(chain, preset_map)
+        if errs:
+            raise ValueError("; ".join(errs))
+        rec = format_genbank(
+            f"{project.name}_{chain.id}",
+            seq,
+            definition=f"{project.name} - {chain.name}",
+        )
+        if not rec:
+            raise ValueError(f"Failed to format GenBank record for chain '{chain.name}'.")
+        records.append(rec)
+    payload = "".join(records)
+    if len(payload.encode("utf-8")) > config.MAX_FILE_SIZE:
+        raise ValueError("Serialized GenBank file exceeds 1MB limit.")
+    try:
+        with open(resolved, "w", encoding="utf-8") as f:
+            f.write(payload)
+    except OSError:
+        raise ValueError(f"Failed to write '{os.path.basename(resolved)}'.") from None
+
+
+def save_csv_report_file(path: str, project: AntibodyProject) -> None:
+    """Export constant-domain EU diffs across all chains to a .csv report."""
+    resolved = _validate_file_path(path, (".csv",), auto_append=True)
+    preset_map = build_preset_map(project)
+    buf = io.StringIO()
+    writer = csv.writer(buf, lineterminator="\n")
+    writer.writerow(["chain_id", "chain_name", "domain_type", "isotype", "eu_position", "wt_aa", "mut_aa", "mutated"])
+    for chain in project.chains:
+        for dom in chain.domains:
+            if dom.domain_type not in CONSTANT_DOMAIN_EU_RANGES:
+                continue
+            wt_seq, base_errs = resolve_domain_base_sequence(dom)
+            mut_seq, mut_errs = resolve_domain_sequence(dom, preset_map)
+            if base_errs or mut_errs:
+                raise ValueError("; ".join(base_errs + mut_errs))
+            for idx in range(max(len(wt_seq), len(mut_seq))):
+                wt = wt_seq[idx] if idx < len(wt_seq) else ""
+                mut = mut_seq[idx] if idx < len(mut_seq) else ""
+                eu_pos = get_domain_eu_position(idx, dom.domain_type, dom.isotype)
+                writer.writerow(
+                    [
+                        chain.id,
+                        chain.name,
+                        dom.domain_type,
+                        dom.isotype,
+                        eu_pos if eu_pos is not None else "",
+                        wt,
+                        mut,
+                        "yes" if wt != mut else "no",
+                    ]
+                )
+    payload = buf.getvalue()
+    if len(payload.encode("utf-8")) > config.MAX_FILE_SIZE:
+        raise ValueError("Serialized CSV report exceeds 1MB limit.")
+    try:
+        with open(resolved, "w", encoding="utf-8") as f:
+            f.write(payload)
+    except OSError:
+        raise ValueError(f"Failed to write '{os.path.basename(resolved)}'.") from None
+
+
 def load_ab_file(path: str) -> AntibodyProject:
     """Read and validate an .ab project file safely within 1MB size bounds."""
     resolved = _validate_file_path(path, (".ab",), auto_append=False)
@@ -883,12 +968,29 @@ def _draw_dashed_arc(
         draw.line([pts[i], pts[i + 1]], fill=fill, width=width)
 
 
+def _load_scaled_font(scale: float) -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
+    font_px = max(10, int(round(10.0 * scale)))
+    for candidate in (
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+        "DejaVuSans.ttf",
+        "Arial.ttf",
+    ):
+        try:
+            return ImageFont.truetype(candidate, size=font_px)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
 def export_schematic_png(
     project: AntibodyProject,
     scale: float = 2.0,
     theme: Optional[SchematicTheme] = None,
+    bg_color: Optional[str] = None,
 ) -> bytes:
-    """Render a transparent-background RGBA .png 2D schematic from build_schematic_scene()."""
+    """Render a transparent-background (or solid bg_color) RGBA .png 2D schematic."""
     if (
         isinstance(scale, bool)
         or not isinstance(scale, (int, float))
@@ -908,9 +1010,9 @@ def export_schematic_png(
             f"Rendered PNG dimensions ({width_px}x{height_px}) exceed MAX_PNG_DIMENSION={MAX_PNG_DIMENSION}."
         )
 
-    img = Image.new("RGBA", (width_px, height_px), (0, 0, 0, 0))
+    img = Image.new("RGBA", (width_px, height_px), bg_color if bg_color else (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    font = ImageFont.load_default()
+    font = _load_scaled_font(scale)
 
     def tx(x: float) -> float:
         return (x - min_x) * scale
@@ -921,6 +1023,7 @@ def export_schematic_png(
     stroke_w = max(1, int(round(1.5 * scale)))
 
     # 1. Draw inter-chain and intra-chain pairings behind domain blocks
+    disulfide_midpoints: List[Tuple[float, float]] = []
     for pedge in scene.pairing_edges:
         x1, y1, x2, y2 = tx(pedge.x1), ty(pedge.y1), tx(pedge.x2), ty(pedge.y2)
         if pedge.chain_a_id == pedge.chain_b_id and pedge.pairing_type == "VH_VL":
@@ -943,9 +1046,17 @@ def export_schematic_png(
             for sign in (-1.0, 1.0):
                 draw.line(
                     [(x1 + nx * sign, y1 + ny * sign), (x2 + nx * sign, y2 + ny * sign)],
-                    fill=(224, 159, 90, 240),
+                    fill=(245, 158, 11, 245),
                     width=stroke_w,
                 )
+            disulfide_midpoints.append(((x1 + x2) / 2.0, (y1 + y2) / 2.0))
+        elif pedge.is_disulfide:
+            draw.line(
+                [(x1, y1), (x2, y2)],
+                fill=(245, 158, 11, 245),
+                width=max(2, int(round(2.0 * scale))),
+            )
+            disulfide_midpoints.append(((x1 + x2) / 2.0, (y1 + y2) / 2.0))
         else:
             _draw_dashed_line(
                 draw,
@@ -1019,6 +1130,18 @@ def export_schematic_png(
                 anchor="mm",
             )
 
+    # 4. Draw -S-S- cysteine disulfide bond badges on top of bridges
+    for mx, my in disulfide_midpoints:
+        pw, ph = 18.0 * scale, 8.0 * scale
+        draw.rounded_rectangle(
+            [mx - pw, my - ph, mx + pw, my + ph],
+            radius=4.0 * scale,
+            fill=(20, 20, 19, 235),
+            outline=(245, 158, 11, 255),
+            width=max(1, int(round(1.0 * scale))),
+        )
+        draw.text((mx, my), "-S-S-", fill=(253, 230, 138, 255), font=font, anchor="mm")
+
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -1029,10 +1152,11 @@ def save_schematic_png(
     project: AntibodyProject,
     scale: float = 2.0,
     theme: Optional[SchematicTheme] = None,
+    bg_color: Optional[str] = None,
 ) -> None:
-    """Save a transparent-background RGBA .png schematic to disk safely."""
+    """Save a transparent-background (or solid bg_color) RGBA .png schematic to disk safely."""
     resolved = _validate_file_path(path, (".png",), auto_append=True)
-    png_bytes = export_schematic_png(project, scale=scale, theme=theme)
+    png_bytes = export_schematic_png(project, scale=scale, theme=theme, bg_color=bg_color)
     if len(png_bytes) > config.MAX_FILE_SIZE:
         raise ValueError("Rendered PNG exceeds maximum allowed 1MB file size.")
     try:

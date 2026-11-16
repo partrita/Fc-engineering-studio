@@ -356,6 +356,9 @@ def test_diff_and_developability_on_isolated_domains():
         ("scfv_fc", {"Chain_A", "Chain_B"}),
         ("dvd_ig", {"LC_1", "HC_1", "HC_2", "LC_2"}),
         ("bite", {"Chain_1"}),
+        ("two_plus_one", {"LC_A1", "LC_B", "HC_2Fab", "HC_1Fab", "LC_A2"}),
+        ("trispecific", {"LC_1", "HC_1_Knob", "HC_2_Hole", "LC_2_Cross"}),
+        ("fab_igg", {"LC_1", "HC_1", "HC_2", "LC_2"}),
         ("custom", {"Chain_1"}),
     ],
 )
@@ -602,5 +605,95 @@ def test_package_version_alignment():
 
     assert project_version == "0.0.1"
     assert fc_engineer.__version__ == project_version
+
+
+def test_disulfide_detection_and_multispecific_helpers():
+    from fc_engineer.designer import (
+        apply_heterodimer_pair,
+        clone_chain_in_project,
+        swap_crossmab_ch1_cl,
+    )
+
+    proj = build_format_template("igg")
+    assert not apply_heterodimer_pair(proj, "HC_1", "HC_2", mode="kih_ss")
+    scene = build_schematic_scene(proj)
+    ch3_edges = [e for e in scene.pairing_edges if e.pairing_type == "CH3_DIMER"]
+    assert len(ch3_edges) == 1
+    assert ch3_edges[0].is_disulfide is True
+
+    hinge_edges = [e for e in scene.pairing_edges if e.pairing_type == "HINGE_DISULFIDE"]
+    assert hinge_edges and all(e.is_disulfide for e in hinge_edges)
+
+    cloned = clone_chain_in_project(proj, "LC_1")
+    assert cloned.id == "Chain_1"
+    assert len(cloned.domains) == 2
+
+    # CrossMab CH1 <-> CL swap between HC_2 and LC_2
+    assert not swap_crossmab_ch1_cl(proj, "HC_2", "LC_2")
+    hc2 = next(c for c in proj.chains if c.id == "HC_2")
+    lc2 = next(c for c in proj.chains if c.id == "LC_2")
+    assert any(d.domain_type == "CL" for d in hc2.domains)
+    assert any(d.domain_type == "CH1" for d in lc2.domains)
+
+
+def test_metrics_wt_lookup_and_charge_pair_ux_helpers(tmp_path):
+    from fc_engineer import config
+    from fc_engineer.core import compute_protein_metrics, lookup_wt_residue
+    from fc_engineer.designer import (
+        add_file_custom_mutation,
+        analyze_chain_developability,
+        apply_heterodimer_pair,
+        auto_detect_standard_pairings,
+        delete_file_custom_mutation,
+        remove_custom_mutation_from_domain,
+        reset_chain_mutations,
+    )
+
+    mw, pi = compute_protein_metrics("ACDEFGHIKLMNPQRSTVWY")
+    assert mw > 2.0
+    assert 4.0 < pi < 9.0
+
+    igg1_seq = next(iter(config.SEQUENCES["igg1"].values()))
+    assert lookup_wt_residue(igg1_seq, 234, "igg1") == "L"
+    assert lookup_wt_residue(igg1_seq, 252, "igg1") == "M"
+    assert lookup_wt_residue(igg1_seq, 999, "igg1") is None
+
+    proj = build_format_template("igg")
+    assert not apply_heterodimer_pair(proj, "HC_1", "HC_2", mode="charge_pair")
+    hc1 = next(c for c in proj.chains if c.id == "HC_1")
+    hc2 = next(c for c in proj.chains if c.id == "HC_2")
+    assert any("ChargePair_A" in d.applied_presets for d in hc1.domains)
+    assert any("ChargePair_B" in d.applied_presets for d in hc2.domains)
+
+    # Clear pairings and auto-detect
+    proj.pairings.clear()
+    added = auto_detect_standard_pairings(proj)
+    assert added >= 2
+
+    # Custom mutation removal & reset chain
+    ch2 = next(d for d in hc1.domains if d.domain_type == "CH2")
+    ch2.custom_mutations.append("L234A")
+    remove_custom_mutation_from_domain(ch2, "L234A")
+    assert "L234A" not in ch2.custom_mutations
+
+    assert not add_file_custom_mutation(proj, "MyMut", "M252Y")
+    delete_file_custom_mutation(proj, "MyMut")
+    assert not any(m.get("label") == "MyMut" for m in proj.file_custom_mutations)
+
+    reset_chain_mutations(hc1)
+    assert all(not d.applied_presets and not d.custom_mutations for d in hc1.domains)
+
+    # Variable developability scan toggle
+    liab_var, dev_errs = analyze_chain_developability(hc1, include_variable=True)
+    assert not dev_errs
+    assert len(liab_var) >= 1
+
+    # User prefs roundtrip
+    prefs_path = tmp_path / "prefs.yaml"
+    config.save_user_prefs({"theme_mode": "dark", "recent_files": ["/a.ab"]}, str(prefs_path))
+    loaded = config.load_user_prefs(str(prefs_path))
+    assert loaded["theme_mode"] == "dark"
+    assert loaded["recent_files"] == ["/a.ab"]
+
 
 

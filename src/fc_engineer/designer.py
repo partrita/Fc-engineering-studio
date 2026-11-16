@@ -1,5 +1,6 @@
 """Modular antibody domain assembly, bispecific templates, mutation routing, and 2D schematic scene model."""
 
+import copy
 import math
 import re
 from dataclasses import dataclass, field
@@ -34,7 +35,13 @@ SCENE_PADDING: float = 24.0
 
 VALID_DOMAIN_TYPES = ("VH", "VL", "CH1", "CL", "Hinge", "CH2", "CH3", "G4S")
 NON_CONSTANT_DOMAIN_TYPES = ("VH", "VL", "CL", "G4S")
-VALID_PAIRING_TYPES = ("VH_VL", "CH1_CL", "HINGE_DISULFIDE", "CH3_DIMER")
+VALID_PAIRING_TYPES = (
+    "VH_VL",
+    "CH1_CL",
+    "HINGE_DISULFIDE",
+    "CH3_DIMER",
+    "DISULFIDE_BOND",
+)
 VALID_SHAPES = ("rect", "rounded_rect", "capsule", "ellipse", "hexagon")
 VALID_ORIENTATIONS = ("vertical", "horizontal")
 VALID_FORMAT_TYPES = (
@@ -44,6 +51,9 @@ VALID_FORMAT_TYPES = (
     "scfv_fc",
     "dvd_ig",
     "bite",
+    "two_plus_one",
+    "trispecific",
+    "fab_igg",
     "custom",
 )
 
@@ -224,6 +234,7 @@ class SchematicNode:
     border_width: float = 1.5
     text_color: str = "#FFFFFF"
     shape: str = "rounded_rect"
+    pinned: bool = False
 
 
 @dataclass
@@ -254,6 +265,7 @@ class SchematicPairingEdge:
     y1: float
     x2: float
     y2: float
+    is_disulfide: bool = False
 
 
 @dataclass
@@ -649,22 +661,45 @@ def diff_chain_sequences(
 
 
 def analyze_chain_developability(
-    chain: PolypeptideChain, preset_map: Optional[Dict[str, str]] = None
+    chain: PolypeptideChain,
+    preset_map: Optional[Dict[str, str]] = None,
+    include_variable: bool = False,
 ) -> Tuple[List[Tuple[str, List[int]]], List[str]]:
-    """Aggregate constant-domain PTM liabilities across a chain's constant domains."""
+    """Aggregate PTM liabilities across constant domains (and optionally variable/linker domains)."""
     by_category: Dict[str, set[int]] = {cat: set() for cat in _DEVELOPABILITY_CATEGORIES}
     errors: List[str] = []
 
     for dom in chain.domains:
-        if dom.domain_type not in CONSTANT_DOMAIN_EU_RANGES:
+        is_const = dom.domain_type in CONSTANT_DOMAIN_EU_RANGES
+        if not is_const and not include_variable:
             continue
         seq, errs = resolve_domain_sequence(dom, preset_map)
         if errs:
             errors.extend(errs)
             continue
-        for cat, positions in analyze_developability(
-            seq, dom.isotype, domain_type=dom.domain_type
-        ):
+        if is_const:
+            findings = analyze_developability(
+                seq, dom.isotype, domain_type=dom.domain_type
+            )
+        else:
+            # Scan non-constant domains using 1-based local residue indices
+            findings = []
+            n = len(seq)
+            glyco = [
+                i + 1
+                for i in range(n - 2)
+                if seq[i] == "N" and seq[i + 1] != "P" and seq[i + 2] in ("S", "T")
+            ]
+            ng = [i + 1 for i in range(n - 1) if seq[i : i + 2] == "NG"]
+            dg = [i + 1 for i in range(n - 1) if seq[i : i + 2] == "DG"]
+            met = [i + 1 for i in range(n) if seq[i] == "M"]
+            findings = [
+                ("N-glycosylation motif (N-X-S/T)", glyco),
+                ("Deamidation-prone NG", ng),
+                ("Isomerization-prone DG", dg),
+                ("Oxidation-prone Met (M252/M428 = FcRn sites)", met),
+            ]
+        for cat, positions in findings:
             if cat in by_category:
                 by_category[cat].update(positions)
 
@@ -1110,6 +1145,170 @@ def build_format_template(
             InterChainPairing("pair_2", "Chain_1", "c1_vhb", "Chain_1", "c1_vlb", "VH_VL"),
         ]
 
+    elif format_type == "two_plus_one":
+        title = "2+1 T-Cell Engager"
+        hc1 = PolypeptideChain(
+            id="HC_2Fab",
+            name="HC_2Fab",
+            domains=[
+                mk("h1_vha1", "VH", "VH_A"),
+                mk("h1_ch1_1", "CH1"),
+                mk("h1_l1", "G4S", "G4S_2"),
+                mk("h1_vhb", "VH", "VH_B"),
+                mk("h1_ch1_2", "CH1"),
+                mk("h1_hinge", "Hinge"),
+                mk("h1_ch2", "CH2"),
+                mk("h1_ch3", "CH3"),
+            ],
+        )
+        hc2 = PolypeptideChain(
+            id="HC_1Fab",
+            name="HC_1Fab",
+            domains=[
+                mk("h2_vha2", "VH", "VH_A"),
+                mk("h2_ch1", "CH1"),
+                mk("h2_hinge", "Hinge"),
+                mk("h2_ch2", "CH2"),
+                mk("h2_ch3", "CH3"),
+            ],
+        )
+        _route_preset_checked(hc1, "Knob")
+        _route_preset_checked(hc2, "Hole")
+        chains = [
+            PolypeptideChain(
+                id="LC_A1",
+                name="LC_A1",
+                domains=[mk("la1_vl", "VL", "VL_A"), mk("la1_cl", "CL", "CL_kappa")],
+            ),
+            PolypeptideChain(
+                id="LC_B",
+                name="LC_B",
+                domains=[mk("lb_vl", "VL", "VL_B"), mk("lb_cl", "CL", "CL_kappa")],
+            ),
+            hc1,
+            hc2,
+            PolypeptideChain(
+                id="LC_A2",
+                name="LC_A2",
+                domains=[mk("la2_vl", "VL", "VL_A"), mk("la2_cl", "CL", "CL_kappa")],
+            ),
+        ]
+        pairings = [
+            InterChainPairing("pair_1", "HC_2Fab", "h1_vha1", "LC_A1", "la1_vl", "VH_VL"),
+            InterChainPairing("pair_2", "HC_2Fab", "h1_ch1_1", "LC_A1", "la1_cl", "CH1_CL"),
+            InterChainPairing("pair_3", "HC_2Fab", "h1_vhb", "LC_B", "lb_vl", "VH_VL"),
+            InterChainPairing("pair_4", "HC_2Fab", "h1_ch1_2", "LC_B", "lb_cl", "CH1_CL"),
+            InterChainPairing("pair_5", "HC_1Fab", "h2_vha2", "LC_A2", "la2_vl", "VH_VL"),
+            InterChainPairing("pair_6", "HC_1Fab", "h2_ch1", "LC_A2", "la2_cl", "CH1_CL"),
+            InterChainPairing("pair_7", "HC_2Fab", "h1_hinge", "HC_1Fab", "h2_hinge", "HINGE_DISULFIDE"),
+            InterChainPairing("pair_8", "HC_2Fab", "h1_ch3", "HC_1Fab", "h2_ch3", "CH3_DIMER"),
+        ]
+
+    elif format_type == "trispecific":
+        title = "Trispecific IgG-scFv"
+        hc1 = PolypeptideChain(
+            id="HC_1_Knob",
+            name="HC_1_Knob",
+            domains=[
+                mk("t1_vh", "VH", "VH_A"),
+                mk("t1_ch1", "CH1"),
+                mk("t1_hinge", "Hinge"),
+                mk("t1_ch2", "CH2"),
+                mk("t1_ch3", "CH3"),
+                mk("t1_l1", "G4S", "G4S_3"),
+                mk("t1_vh_c", "VH", "VH_B"),
+                mk("t1_l2", "G4S", "G4S_3"),
+                mk("t1_vl_c", "VL", "VL_B"),
+            ],
+        )
+        hc2 = PolypeptideChain(
+            id="HC_2_Hole",
+            name="HC_2_Hole",
+            domains=[
+                mk("t2_vh", "VH", "VH_B"),
+                mk("t2_cl", "CL", "CL_kappa"),
+                mk("t2_hinge", "Hinge"),
+                mk("t2_ch2", "CH2"),
+                mk("t2_ch3", "CH3"),
+            ],
+        )
+        _route_preset_checked(hc1, "Knob")
+        _route_preset_checked(hc2, "Hole")
+        chains = [
+            PolypeptideChain(
+                id="LC_1",
+                name="LC_1",
+                domains=[mk("tl1_vl", "VL", "VL_A"), mk("tl1_cl", "CL", "CL_kappa")],
+            ),
+            hc1,
+            hc2,
+            PolypeptideChain(
+                id="LC_2_Cross",
+                name="LC_2_Cross",
+                domains=[mk("tl2_vl", "VL", "VL_B"), mk("tl2_ch1", "CH1")],
+            ),
+        ]
+        pairings = [
+            InterChainPairing("pair_1", "HC_1_Knob", "t1_vh", "LC_1", "tl1_vl", "VH_VL"),
+            InterChainPairing("pair_2", "HC_1_Knob", "t1_ch1", "LC_1", "tl1_cl", "CH1_CL"),
+            InterChainPairing("pair_3", "HC_2_Hole", "t2_vh", "LC_2_Cross", "tl2_vl", "VH_VL"),
+            InterChainPairing("pair_4", "HC_2_Hole", "t2_cl", "LC_2_Cross", "tl2_ch1", "CH1_CL"),
+            InterChainPairing("pair_5", "HC_1_Knob", "t1_hinge", "HC_2_Hole", "t2_hinge", "HINGE_DISULFIDE"),
+            InterChainPairing("pair_6", "HC_1_Knob", "t1_ch3", "HC_2_Hole", "t2_ch3", "CH3_DIMER"),
+            InterChainPairing("pair_7", "HC_1_Knob", "t1_vh_c", "HC_1_Knob", "t1_vl_c", "VH_VL"),
+        ]
+
+    elif format_type == "fab_igg":
+        title = "Fab-IgG"
+        chains = [
+            PolypeptideChain(
+                id="LC_1",
+                name="LC_1",
+                domains=[mk("fl1_vl", "VL", "VL_A"), mk("fl1_cl", "CL", "CL_kappa")],
+            ),
+            PolypeptideChain(
+                id="HC_1",
+                name="HC_1",
+                domains=[
+                    mk("fh1_vh1", "VH", "VH_A"),
+                    mk("fh1_ch1_1", "CH1"),
+                    mk("fh1_link", "G4S", "G4S_2"),
+                    mk("fh1_vh2", "VH", "VH_B"),
+                    mk("fh1_ch1_2", "CH1"),
+                    mk("fh1_hinge", "Hinge"),
+                    mk("fh1_ch2", "CH2"),
+                    mk("fh1_ch3", "CH3"),
+                ],
+            ),
+            PolypeptideChain(
+                id="HC_2",
+                name="HC_2",
+                domains=[
+                    mk("fh2_vh1", "VH", "VH_A"),
+                    mk("fh2_ch1_1", "CH1"),
+                    mk("fh2_link", "G4S", "G4S_2"),
+                    mk("fh2_vh2", "VH", "VH_B"),
+                    mk("fh2_ch1_2", "CH1"),
+                    mk("fh2_hinge", "Hinge"),
+                    mk("fh2_ch2", "CH2"),
+                    mk("fh2_ch3", "CH3"),
+                ],
+            ),
+            PolypeptideChain(
+                id="LC_2",
+                name="LC_2",
+                domains=[mk("fl2_vl", "VL", "VL_A"), mk("fl2_cl", "CL", "CL_kappa")],
+            ),
+        ]
+        pairings = [
+            InterChainPairing("pair_1", "HC_1", "fh1_vh1", "LC_1", "fl1_vl", "VH_VL"),
+            InterChainPairing("pair_2", "HC_1", "fh1_ch1_1", "LC_1", "fl1_cl", "CH1_CL"),
+            InterChainPairing("pair_3", "HC_2", "fh2_vh1", "LC_2", "fl2_vl", "VH_VL"),
+            InterChainPairing("pair_4", "HC_2", "fh2_ch1_1", "LC_2", "fl2_cl", "CH1_CL"),
+            InterChainPairing("pair_5", "HC_1", "fh1_hinge", "HC_2", "fh2_hinge", "HINGE_DISULFIDE"),
+            InterChainPairing("pair_6", "HC_1", "fh1_ch3", "HC_2", "fh2_ch3", "CH3_DIMER"),
+        ]
+
     else:  # "custom"
         title = "Custom Construct"
         chains = [
@@ -1206,6 +1405,7 @@ def build_schematic_scene(
                 border_width=style.border_width,
                 text_color=style.text_color,
                 shape=style.shape,
+                pinned=dom.pinned,
             )
             nodes.append(node)
             chain_nodes.append(node)
@@ -1235,11 +1435,33 @@ def build_schematic_scene(
                 )
             )
 
+    domain_lookup: Dict[Tuple[str, str], DomainBlock] = {
+        (chain.id, dom.id): dom
+        for chain in project.chains
+        for dom in chain.domains
+    }
+
     for pairing in project.pairings:
         node_a = node_lookup.get((pairing.chain_a_id, pairing.domain_a_id))
         node_b = node_lookup.get((pairing.chain_b_id, pairing.domain_b_id))
         if node_a is None or node_b is None:
             continue
+
+        is_disulfide = pairing.pairing_type in (
+            "HINGE_DISULFIDE",
+            "CH1_CL",
+            "DISULFIDE_BOND",
+        )
+        if not is_disulfide and pairing.pairing_type == "CH3_DIMER":
+            dom_a = domain_lookup.get((pairing.chain_a_id, pairing.domain_a_id))
+            dom_b = domain_lookup.get((pairing.chain_b_id, pairing.domain_b_id))
+            if dom_a is not None and dom_b is not None:
+                muts_a, _ = get_effective_domain_mutations(dom_a, resolved_map)
+                muts_b, _ = get_effective_domain_mutations(dom_b, resolved_map)
+                has_pair_1 = "S354C" in muts_a and "Y349C" in muts_b
+                has_pair_2 = "Y349C" in muts_a and "S354C" in muts_b
+                is_disulfide = has_pair_1 or has_pair_2
+
         pairing_edges.append(
             SchematicPairingEdge(
                 pairing_id=pairing.id,
@@ -1252,6 +1474,7 @@ def build_schematic_scene(
                 y1=node_a.y + node_a.height / 2.0,
                 x2=node_b.x + node_b.width / 2.0,
                 y2=node_b.y + node_b.height / 2.0,
+                is_disulfide=is_disulfide,
             )
         )
 
@@ -1275,3 +1498,274 @@ def build_schematic_scene(
         pairing_edges=pairing_edges,
         bounds=bounds,
     )
+
+
+def clone_chain_in_project(
+    project: AntibodyProject,
+    chain_id: str,
+    theme: Optional[SchematicTheme] = None,
+) -> PolypeptideChain:
+    """Deep-copy a PolypeptideChain with unique IDs and mirror its intra-chain pairings."""
+    if len(project.chains) >= MAX_CHAINS:
+        raise ValueError(f"Maximum of {MAX_CHAINS} chains reached.")
+    src_chain = next((c for c in project.chains if c.id == chain_id), None)
+    if src_chain is None:
+        raise ValueError(f"Chain '{chain_id}' not found.")
+
+    existing_chain_ids = {c.id for c in project.chains}
+    n = 1
+    while f"Chain_{n}" in existing_chain_ids:
+        n += 1
+    new_cid = f"Chain_{n}"
+    new_name = f"{src_chain.name}_copy"[:MAX_METADATA_LENGTH]
+
+    existing_dom_ids = {d.id for c in project.chains for d in c.domains}
+    dom_id_map: Dict[str, str] = {}
+    cloned_domains: List[DomainBlock] = []
+    for dom in src_chain.domains:
+        cloned = copy.deepcopy(dom)
+        prefix = f"{new_cid.lower()}_{cloned.domain_type.lower()}"
+        k = 1
+        while f"{prefix}_{k}" in existing_dom_ids:
+            k += 1
+        new_did = f"{prefix}_{k}"
+        existing_dom_ids.add(new_did)
+        dom_id_map[dom.id] = new_did
+        cloned.id = new_did
+        cloned.pinned = False
+        cloned_domains.append(cloned)
+
+    new_chain = PolypeptideChain(
+        id=new_cid,
+        name=new_name,
+        domains=cloned_domains,
+    )
+    project.chains.append(new_chain)
+
+    existing_pair_ids = {p.id for p in project.pairings}
+    for p in list(project.pairings):
+        if p.chain_a_id == chain_id and p.chain_b_id == chain_id:
+            if len(project.pairings) >= MAX_PAIRINGS:
+                break
+            pn = 1
+            while f"pair_{pn}" in existing_pair_ids:
+                pn += 1
+            pid = f"pair_{pn}"
+            existing_pair_ids.add(pid)
+            project.pairings.append(
+                InterChainPairing(
+                    id=pid,
+                    chain_a_id=new_cid,
+                    domain_a_id=dom_id_map[p.domain_a_id],
+                    chain_b_id=new_cid,
+                    domain_b_id=dom_id_map[p.domain_b_id],
+                    pairing_type=p.pairing_type,
+                )
+            )
+
+    reflow_project_coordinates(project, theme=theme)
+    return new_chain
+
+
+def swap_crossmab_ch1_cl(
+    project: AntibodyProject,
+    chain_a_id: str,
+    chain_b_id: str,
+    theme: Optional[SchematicTheme] = None,
+) -> List[str]:
+    """Swap CH1 and CL domain types between two chains (CrossMab CH1<->CL crossover)."""
+    if chain_a_id == chain_b_id:
+        return ["Select two distinct chains for CrossMab CH1<->CL swap."]
+    ca = next((c for c in project.chains if c.id == chain_a_id), None)
+    cb = next((c for c in project.chains if c.id == chain_b_id), None)
+    if ca is None or cb is None:
+        return ["Selected chains not found."]
+
+    ch1_dom: Optional[DomainBlock] = next(
+        (d for d in ca.domains if d.domain_type == "CH1"), None
+    )
+    cl_dom: Optional[DomainBlock] = next(
+        (d for d in cb.domains if d.domain_type == "CL"), None
+    )
+    ch1_chain, cl_chain = ca, cb
+    if ch1_dom is None or cl_dom is None:
+        ch1_dom = next((d for d in cb.domains if d.domain_type == "CH1"), None)
+        cl_dom = next((d for d in ca.domains if d.domain_type == "CL"), None)
+        ch1_chain, cl_chain = cb, ca
+
+    if ch1_dom is None or cl_dom is None:
+        return ["One chain must carry CH1 and the other must carry CL."]
+
+    # Mutate CH1 -> CL and CL -> CH1 cleanly with valid isotype/template defaults
+    saved_isotype = ch1_dom.isotype or "igg1"
+    saved_allotype = ch1_dom.allotype
+    saved_tkey = cl_dom.template_key or DEFAULT_TEMPLATE_KEYS["CL"]
+
+    ch1_dom.domain_type = "CL"
+    ch1_dom.template_key = saved_tkey
+    ch1_dom.isotype = "igg1"
+    ch1_dom.allotype = ""
+    ch1_dom.custom_sequence = ""
+    ch1_dom.applied_presets = []
+    ch1_dom.custom_mutations = []
+
+    cl_dom.domain_type = "CH1"
+    cl_dom.isotype = saved_isotype
+    cl_dom.allotype = saved_allotype
+    cl_dom.template_key = ""
+    cl_dom.custom_sequence = ""
+    cl_dom.applied_presets = []
+    cl_dom.custom_mutations = []
+
+    has_ch1_cl = any(
+        p.pairing_type == "CH1_CL"
+        and {
+            (p.chain_a_id, p.domain_a_id),
+            (p.chain_b_id, p.domain_b_id),
+        }
+        == {(ch1_chain.id, ch1_dom.id), (cl_chain.id, cl_dom.id)}
+        for p in project.pairings
+    )
+    if not has_ch1_cl and len(project.pairings) < MAX_PAIRINGS:
+        existing_pair_ids = {p.id for p in project.pairings}
+        pn = 1
+        while f"pair_{pn}" in existing_pair_ids:
+            pn += 1
+        project.pairings.append(
+            InterChainPairing(
+                id=f"pair_{pn}",
+                chain_a_id=ch1_chain.id,
+                domain_a_id=ch1_dom.id,
+                chain_b_id=cl_chain.id,
+                domain_b_id=cl_dom.id,
+                pairing_type="CH1_CL",
+            )
+        )
+
+    reflow_project_coordinates(project, theme=theme)
+    return []
+
+
+def apply_heterodimer_pair(
+    project: AntibodyProject,
+    chain_a_id: str,
+    chain_b_id: str,
+    mode: str = "kih_ss",
+) -> List[str]:
+    """Atomically apply asymmetric Fc heterodimerization mutations and CH3/Hinge pairings."""
+    if chain_a_id == chain_b_id:
+        return ["Select two distinct heavy chains for heterodimerization."]
+    ca = next((c for c in project.chains if c.id == chain_a_id), None)
+    cb = next((c for c in project.chains if c.id == chain_b_id), None)
+    if ca is None or cb is None:
+        return ["Selected chains not found."]
+
+    preset_map = build_preset_map(project)
+    ca_copy = copy.deepcopy(ca)
+    cb_copy = copy.deepcopy(cb)
+
+    if mode == "kih":
+        errs_a = route_mutations_to_chain(ca_copy, "", preset_label="Knob", preset_map=preset_map)
+        errs_b = route_mutations_to_chain(cb_copy, "", preset_label="Hole", preset_map=preset_map)
+    elif mode == "kih_ss":
+        errs_a = route_mutations_to_chain(ca_copy, "", preset_label="Knob_Cys", preset_map=preset_map)
+        errs_b = route_mutations_to_chain(cb_copy, "", preset_label="Hole_Cys", preset_map=preset_map)
+    elif mode == "charge_pair":
+        errs_a = route_mutations_to_chain(ca_copy, "", preset_label="ChargePair_A", preset_map=preset_map)
+        errs_b = route_mutations_to_chain(cb_copy, "", preset_label="ChargePair_B", preset_map=preset_map)
+    else:
+        return [f"Unsupported heterodimer mode '{mode}'."]
+
+    if errs_a or errs_b:
+        return errs_a + errs_b
+
+    # Commit validated mutations
+    ca.domains = ca_copy.domains
+    cb.domains = cb_copy.domains
+
+    # Ensure CH3_DIMER and HINGE_DISULFIDE pairings exist between the two chains
+    existing_pair_ids = {p.id for p in project.pairings}
+
+    def ensure_pairing(dtype: str, ptype: str) -> None:
+        da = next((d for d in ca.domains if d.domain_type == dtype), None)
+        db = next((d for d in cb.domains if d.domain_type == dtype), None)
+        if da is None or db is None or len(project.pairings) >= MAX_PAIRINGS:
+            return
+        already = any(
+            p.pairing_type == ptype
+            and {(p.chain_a_id, p.domain_a_id), (p.chain_b_id, p.domain_b_id)}
+            == {(ca.id, da.id), (cb.id, db.id)}
+            for p in project.pairings
+        )
+        if not already:
+            pn = 1
+            while f"pair_{pn}" in existing_pair_ids:
+                pn += 1
+            pid = f"pair_{pn}"
+            existing_pair_ids.add(pid)
+            project.pairings.append(
+                InterChainPairing(pid, ca.id, da.id, cb.id, db.id, ptype)
+            )
+
+    ensure_pairing("Hinge", "HINGE_DISULFIDE")
+    ensure_pairing("CH3", "CH3_DIMER")
+    return []
+
+
+def auto_detect_standard_pairings(project: AntibodyProject) -> int:
+    """Auto-wire Hinge disulfide and CH3 dimer pairings between heavy chains. Returns count added."""
+    heavy = [
+        c for c in project.chains if any(d.domain_type in ("CH2", "CH3") for d in c.domains)
+    ]
+    added = 0
+    existing_pair_ids = {p.id for p in project.pairings}
+    for ca, cb in zip(heavy, heavy[1:]):
+        for dtype, ptype in (("Hinge", "HINGE_DISULFIDE"), ("CH3", "CH3_DIMER")):
+            da = next((d for d in ca.domains if d.domain_type == dtype), None)
+            db = next((d for d in cb.domains if d.domain_type == dtype), None)
+            if da is None or db is None or len(project.pairings) >= MAX_PAIRINGS:
+                continue
+            already = any(
+                p.pairing_type == ptype
+                and {(p.chain_a_id, p.domain_a_id), (p.chain_b_id, p.domain_b_id)}
+                == {(ca.id, da.id), (cb.id, db.id)}
+                for p in project.pairings
+            )
+            if not already:
+                pn = 1
+                while f"pair_{pn}" in existing_pair_ids:
+                    pn += 1
+                pid = f"pair_{pn}"
+                existing_pair_ids.add(pid)
+                project.pairings.append(
+                    InterChainPairing(pid, ca.id, da.id, cb.id, db.id, ptype)
+                )
+                added += 1
+    return added
+
+
+def remove_custom_mutation_from_domain(domain: DomainBlock, mut_token: str) -> None:
+    """Remove an ad-hoc EU mutation token from a DomainBlock."""
+    if mut_token in domain.custom_mutations:
+        domain.custom_mutations = [m for m in domain.custom_mutations if m != mut_token]
+        _append_domain_history(domain, f"Removed custom: {mut_token}")
+
+
+def delete_file_custom_mutation(project: AntibodyProject, label: str) -> None:
+    """Delete a project-scoped custom mutation definition and strip it from domains."""
+    project.file_custom_mutations = [
+        item
+        for item in project.file_custom_mutations
+        if not (isinstance(item, dict) and item.get("label") == label)
+    ]
+    for chain in project.chains:
+        remove_preset_from_chain(chain, label)
+
+
+def reset_chain_mutations(chain: PolypeptideChain) -> None:
+    """Clear all applied presets and custom mutations on every domain in a chain."""
+    for dom in chain.domains:
+        if dom.applied_presets or dom.custom_mutations:
+            dom.applied_presets = []
+            dom.custom_mutations = []
+            _append_domain_history(dom, "Reset to WT")

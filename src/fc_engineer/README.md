@@ -40,18 +40,19 @@ Modular antibody & bispecific domain engineering package combining **EU Numberin
 
 | Symbol | Role / Signature | Source |
 | :--- | :--- | :--- |
-| `MAX_CHAINS`, `MAX_DOMAINS_PER_CHAIN`, `MAX_PAIRINGS`, `MAX_FILE_CUSTOM_MUTATIONS`, `MAX_CUSTOM_SEQ_LENGTH`, `MAX_EXPORT_SEQUENCE_LENGTH`, `MAX_METADATA_LENGTH`, `MAX_HISTORY_ENTRIES`, `MAX_COORD`, `VALID_DOMAIN_TYPES`, `NON_CONSTANT_DOMAIN_TYPES`, `VALID_PAIRING_TYPES`, `VALID_FORMAT_TYPES`, `ALLOWED_TEMPLATE_KEYS_BY_TYPE`, `DEFAULT_TEMPLATE_KEYS` | Bounds and domain/format/template enum constants (`16`, `32`, `64`, `100`, `2000`, `10000`, `200`, `50`, `10000.0`, valid types/templates) | [`designer.py:MAX_CHAINS`](./designer.py) |
+| `MAX_CHAINS`, `MAX_DOMAINS_PER_CHAIN`, `MAX_PAIRINGS`, `MAX_FILE_CUSTOM_MUTATIONS`, `MAX_CUSTOM_SEQ_LENGTH`, `MAX_EXPORT_SEQUENCE_LENGTH`, `MAX_METADATA_LENGTH`, `MAX_HISTORY_ENTRIES`, `MAX_COORD`, `VALID_DOMAIN_TYPES`, `NON_CONSTANT_DOMAIN_TYPES`, `VALID_PAIRING_TYPES`, `VALID_SHAPES`, `VALID_ORIENTATIONS`, `VALID_FORMAT_TYPES`, `ALLOWED_TEMPLATE_KEYS_BY_TYPE`, `DEFAULT_TEMPLATE_KEYS` | Bounds and domain/pairing/shape/orientation/format/template enum constants (`DISULFIDE_BOND` pairing, 5 shapes, 10 format templates) | [`designer.py:MAX_CHAINS`](./designer.py) |
 | `DomainBlock`, `PolypeptideChain`, `InterChainPairing`, `AntibodyProject` | Core antibody topology and state dataclasses | [`designer.py:AntibodyProject`](./designer.py) |
-| `SchematicNode`, `SchematicEdge`, `SchematicPairingEdge`, `SchematicScene` | UI-agnostic 2D schematic geometry dataclasses (`SCENE_PADDING = 24.0`, `DOMAIN_STYLE_MAP`) | [`designer.py:SchematicScene`](./designer.py) |
+| `DomainVisualStyle`, `SchematicTheme`, `DEFAULT_SCHEMATIC_THEME`, `SchematicNode`, `SchematicEdge`, `SchematicPairingEdge`, `SchematicScene` | UI-agnostic 2D schematic theme, geometry, and disulfide (`is_disulfide`) dataclasses (`SCENE_PADDING = 24.0`, `DOMAIN_STYLE_MAP`) | [`designer.py:SchematicScene`](./designer.py) |
 | `build_format_template` | `(format_type: str, isotype: str = "igg1", allotype: Optional[str] = None) -> AntibodyProject` | [`designer.py:build_format_template`](./designer.py) |
 | `build_preset_map` | `(project: Optional[AntibodyProject] = None) -> Dict[str, str]` | [`designer.py:build_preset_map`](./designer.py) |
 | `get_effective_domain_mutations` | `(domain: DomainBlock, preset_map=None) -> Tuple[List[str], List[str]]` | [`designer.py:get_effective_domain_mutations`](./designer.py) |
 | `resolve_domain_base_sequence`, `resolve_domain_sequence` | Resolve WT/custom/engineered amino acid sequences for any domain block | [`designer.py:resolve_domain_sequence`](./designer.py) |
 | `assemble_chain_sequence` | `(chain: PolypeptideChain, preset_map=None) -> Tuple[str, List[Tuple[int, int, DomainBlock]], List[str]]` | [`designer.py:assemble_chain_sequence`](./designer.py) |
 | `route_mutations_to_chain`, `remove_preset_from_chain` | Atomic Phase 1/Phase 2 cross-domain EU mutation routing and reversible preset removal | [`designer.py:route_mutations_to_chain`](./designer.py) |
-| `remove_domain_from_chain`, `remove_chain_from_project`, `reflow_chain_coordinates` | Topology editing with orphaned pairing pruning and coordinate reflow | [`designer.py:reflow_chain_coordinates`](./designer.py) |
+| `remove_domain_from_chain`, `remove_chain_from_project`, `reflow_chain_coordinates`, `reflow_project_coordinates`, `compute_hexagon_vertices` | Topology editing, vertical/horizontal theme-aware coordinate reflow, and shared hexagon geometry | [`designer.py:reflow_chain_coordinates`](./designer.py) |
+| `clone_chain_in_project`, `swap_crossmab_ch1_cl`, `apply_heterodimer_pair` | Multispecific chain cloning, CrossMab `CH1 <-> CL` crossover, and atomic Fc heterodimerization (`kih`, `kih_ss`, `charge_pair`) | [`designer.py:apply_heterodimer_pair`](./designer.py) |
 | `diff_chain_sequences`, `analyze_chain_developability`, `add_file_custom_mutation` | Chain-level constant-domain EU diffs, PTM scans, and `.ab`-scoped custom mutation registration | [`designer.py:add_file_custom_mutation`](./designer.py) |
-| `build_schematic_scene` | `(project: AntibodyProject, preset_map=None) -> SchematicScene` | [`designer.py:build_schematic_scene`](./designer.py) |
+| `build_schematic_scene` | `(project: AntibodyProject, preset_map=None, theme: Optional[SchematicTheme] = None) -> SchematicScene` | [`designer.py:build_schematic_scene`](./designer.py) |
 
 ### Configuration & Safe YAML Loading ([`config.py`](./config.py))
 
@@ -61,7 +62,7 @@ Modular antibody & bispecific domain engineering package combining **EU Numberin
 | `logger` | `logging.Logger` | Module logger configured with `logging.NullHandler()` | [`config.py:logger`](./config.py) |
 | `log_sanitized_error` | `(logger_obj: logging.Logger, msg: str, e: Exception) -> None` | Redacts package base directory paths (`"."`) in error logs and tracebacks | [`config.py:log_sanitized_error`](./config.py) |
 | `NoAliasSafeLoader` | `yaml.SafeLoader` subclass (`MAX_DEPTH = 50`) | Blocks `AliasEvent` bombs and deep nesting | [`config.py:NoAliasSafeLoader`](./config.py) |
-| `load_yaml_data`, `load_domain_templates` | Side-effect-free YAML loaders | Return validated constant sequences, presets, and VH/VL/CL/G4S templates | [`config.py:load_yaml_data`](./config.py) |
+| `load_yaml_data`, `load_domain_templates`, `load_theme_presets`, `parse_theme_yaml`, `serialize_theme_yaml`, `load_theme_file`, `save_theme_file` | Safe YAML loaders and standalone `.yaml` theme persistence (`_data_dir()` includes `sys._MEIPASS` frozen bundle fallback) | [`config.py:load_theme_presets`](./config.py) |
 | `SEQUENCES`, `COMMON_MUTATIONS`, `VARIABLE_DOMAINS`, `LIGHT_CONSTANT_DOMAINS`, `DEFAULT_LINKERS` | Module constants | Populated once at import via `_load_all_config()` | [`config.py:SEQUENCES`](./config.py) |
 
 ### Persistence & Export Formatters ([`exporters.py`](./exporters.py))
@@ -78,13 +79,14 @@ Modular antibody & bispecific domain engineering package combining **EU Numberin
 
 | Symbol | Key Capabilities | Source |
 | :--- | :--- | :--- |
-| `AntibodyStudioController` | Manages active `AntibodyProject`, selection (`select_domain()`), project renaming (`rename_project()`), format templates, chain/domain CRUD & cross-chain drag moves, atomic cross-chain mutations, `.ab`/FASTA/PNG persistence, lock-protected 30s `threading.Timer` clipboard auto-clear, and `shutdown()` | [`app.py:AntibodyStudioController`](./app.py) |
-| `build_studio_ui`, `main` | `build_studio_ui(page: ft.Page, controller: Optional[AntibodyStudioController] = None) -> AntibodyStudioController` builds the 3-pane Flet desktop UI (`ft.DragTarget`, `ft.GestureDetector` + `flet.canvas.Canvas`, async `ft.FilePicker`, `window.prevent_close` shutdown hook); `main() -> None` starts `ft.run(...)` | [`app.py:build_studio_ui`](./app.py) |
+| `AntibodyStudioController` | Manages active `AntibodyProject`, `theme_mode` (`"light"`/`"dark"`), `SchematicTheme` presets/YAML I/O, selection (`select_domain()`), project renaming (`rename_project()`), format templates, chain/domain CRUD, multispecific tools (`clone_chain()`, `swap_crossmab_ch1_cl()`, `apply_heterodimer_pair()`), atomic cross-chain mutations, `.ab`/FASTA/PNG persistence, lock-protected 30s `threading.Timer` clipboard auto-clear, and `shutdown()` | [`app.py:AntibodyStudioController`](./app.py) |
+| `build_studio_ui`, `main` | `build_studio_ui(page: ft.Page, controller: Optional[AntibodyStudioController] = None) -> AntibodyStudioController` builds the minimal 4-tab Flet desktop UI (`Studio`, `Project` with `File` menu & multispecific builder, `Inspector & Domain`, `Theme & Settings` with Light/Dark mode, `flet.canvas.Canvas` 5-shape + `-S-S-` disulfide rendering, `window.prevent_close` shutdown hook); `main() -> None` starts `ft.run(...)` | [`app.py:build_studio_ui`](./app.py) |
 
 ### Bundled YAML Data Assets
 
 * [sequences.yaml](./data/sequences.yaml) — Reference constant sequences (`isotypes`: `igg1`–`igg4`), fallback variable regions (`variable_domains`: `VH_A`, `VL_A`, `VH_B`, `VL_B`), light constant domains (`light_constant_domains`: `CL_kappa`, `CL_lambda`), and linkers (`linkers`: `G4S_3`, `G4S_2`, `G4S_1`).
-* [mutants.yaml](./data/mutants.yaml) — Read-only list of 46 `{label, value}` preset mutations under `common_mutations`.
+* [mutants.yaml](./data/mutants.yaml) — Read-only list of `{label, value}` preset mutations under `common_mutations` (including `S354C`, `Y349C`, `Knob_Cys`, `Hole_Cys`).
+* [themes.yaml](./data/themes.yaml) — Built-in schematic theme presets (`Claude Code`, `Classic Blueprint`, `Monochrome Publication`, `High Contrast`, `Pastel Candy`).
 
 ## Invariants
 

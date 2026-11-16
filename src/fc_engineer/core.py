@@ -395,3 +395,51 @@ def analyze_developability(
     findings.append(("Isomerization-prone DG", dg))
     findings.append(("Oxidation-prone Met (M252/M428 = FcRn sites)", met))
     return findings
+
+
+_AA_WEIGHTS: Dict[str, float] = {
+    "A": 71.0788, "R": 156.1875, "N": 114.1038, "D": 115.0886, "C": 103.1388,
+    "E": 129.1155, "Q": 128.1307, "G": 57.0519, "H": 137.1411, "I": 113.1594,
+    "L": 113.1594, "K": 128.1741, "M": 131.1926, "F": 147.1766, "P": 97.1167,
+    "S": 87.0782, "T": 101.1051, "W": 186.2132, "Y": 163.1760, "V": 99.1326,
+}
+_PKA_POS: Dict[str, float] = {"K": 10.5, "R": 12.5, "H": 6.0}
+_PKA_NEG: Dict[str, float] = {"D": 3.9, "E": 4.2, "C": 8.3, "Y": 10.1}
+
+
+def compute_protein_metrics(sequence: str) -> Tuple[float, float]:
+    """Compute approximate molecular weight (kDa) and theoretical pI for an amino acid sequence."""
+    if not isinstance(sequence, str) or not sequence:
+        return 0.0, 7.0
+    mw_da = 18.01528 + sum(_AA_WEIGHTS.get(aa, 110.0) for aa in sequence)
+    counts = {aa: sequence.count(aa) for aa in set(sequence)}
+
+    def net_charge(ph: float) -> float:
+        pos = 1.0 / (1.0 + 10.0 ** (ph - 8.0))  # N-terminus
+        neg = 1.0 / (1.0 + 10.0 ** (3.1 - ph))  # C-terminus
+        for aa, pka in _PKA_POS.items():
+            if aa in counts:
+                pos += counts[aa] / (1.0 + 10.0 ** (ph - pka))
+        for aa, pka in _PKA_NEG.items():
+            if aa in counts:
+                neg += counts[aa] / (1.0 + 10.0 ** (pka - ph))
+        return pos - neg
+
+    lo, hi = 0.0, 14.0
+    for _ in range(40):
+        mid = (lo + hi) / 2.0
+        if net_charge(mid) > 0.0:
+            lo = mid
+        else:
+            hi = mid
+    return round(mw_da / 1000.0, 2), round((lo + hi) / 2.0, 2)
+
+
+def lookup_wt_residue(sequence: str, eu_pos: int, isotype: str) -> Optional[str]:
+    """Return the wild-type amino acid at EU position eu_pos in a full constant sequence."""
+    if not isinstance(sequence, str) or not sequence:
+        return None
+    idx = get_residue_index(eu_pos, isotype)
+    if idx is None or not (0 <= idx < len(sequence)):
+        return None
+    return sequence[idx]

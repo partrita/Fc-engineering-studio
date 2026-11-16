@@ -182,6 +182,17 @@ class TestProjectFastaAndAbPersistence:
         reloaded_fasta, _ = format_project_fasta(reloaded)
         assert reloaded_fasta == orig_fasta
 
+        from fc_engineer.exporters import save_csv_report_file, save_genbank_file
+
+        gb_path = tmp_path / "project_export"
+        csv_path = tmp_path / "project_diffs"
+        save_genbank_file(str(gb_path), proj)
+        save_csv_report_file(str(csv_path), proj)
+        assert (tmp_path / "project_export.gb").is_file()
+        assert (tmp_path / "project_diffs.csv").is_file()
+        assert "LOCUS" in (tmp_path / "project_export.gb").read_text(encoding="utf-8")
+        assert ",yes" in (tmp_path / "project_diffs.csv").read_text(encoding="utf-8")
+
     def test_ab_file_security_and_path_sanitization(self, tmp_path):
         proj = build_format_template("igg")
         ab_text = serialize_ab_project(proj)
@@ -344,4 +355,19 @@ class TestSchematicPngExporter:
         hc_theme.orientation = "horizontal"
         png_horiz = export_schematic_png(proj, scale=1.0, theme=hc_theme)
         assert png_horiz.startswith(b"\x89PNG\r\n\x1a\n")
+
+    def test_fasta_header_styles_and_png_bg_color(self):
+        proj = build_format_template("igg")
+        fasta_chain_only, errs1 = format_project_fasta(proj, header_style="chain_only")
+        assert not errs1
+        assert ">HC_1\n" in fasta_chain_only
+
+        fasta_det, errs2 = format_project_fasta(proj, header_style="detailed")
+        assert not errs2
+        assert "_igg1_WT" in fasta_det
+
+        png_white = export_schematic_png(proj, scale=1.0, bg_color="#FFFFFF")
+        with Image.open(io.BytesIO(png_white)) as im:
+            assert im.getpixel((0, 0)) == (255, 255, 255, 255)
+
 
