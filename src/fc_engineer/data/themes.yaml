@@ -1,0 +1,350 @@
+presets:
+  Claude Code:
+    orientation: vertical
+    domain_spacing: 18.0
+    chain_spacing: 116.0
+    styles:
+      VH:
+        fill_color: "#D97757"
+        border_color: "#F09A7E"
+        border_width: 1.5
+        text_color: "#FAF9F5"
+        width: 52.0
+        height: 88.0
+        shape: rounded_rect
+      VL:
+        fill_color: "#E09F5A"
+        border_color: "#F2BC82"
+        border_width: 1.5
+        text_color: "#141413"
+        width: 52.0
+        height: 88.0
+        shape: rounded_rect
+      CH1:
+        fill_color: "#B85C3E"
+        border_color: "#D97757"
+        border_width: 1.5
+        text_color: "#FAF9F5"
+        width: 52.0
+        height: 88.0
+        shape: rounded_rect
+      CL:
+        fill_color: "#C48B71"
+        border_color: "#DFB099"
+        border_width: 1.5
+        text_color: "#FAF9F5"
+        width: 52.0
+        height: 88.0
+        shape: rounded_rect
+      Hinge:
+        fill_color: "#6E6A61"
+        border_color: "#9E988C"
+        border_width: 1.5
+        text_color: "#FAF9F5"
+        width: 38.0
+        height: 52.0
+        shape: capsule
+      CH2:
+        fill_color: "#5C8A72"
+        border_color: "#84B39B"
+        border_width: 1.5
+        text_color: "#FAF9F5"
+        width: 52.0
+        height: 88.0
+        shape: rounded_rect
+      CH3:
+        fill_color: "#3D6B58"
+        border_color: "#639681"
+        border_width: 1.5
+        text_color: "#FAF9F5"
+        width: 52.0
+        height: 88.0
+        shape: rounded_rect
+      G4S:
+        fill_color: "#524F48"
+        border_color: "#7D786D"
+        border_width: 1.5
+        text_color: "#ECE9E0"
+        width: 38.0
+        height: 52.0
+        shape: capsule
+
+  Classic Blueprint:
+    orientation: vertical
+    domain_spacing: 18.0
+    chain_spacing: 116.0
+    styles:
+      VH:
+        fill_color: "#1D4ED8"
+        border_color: "#93C5FD"
+        border_width: 1.5
+        text_color: "#FFFFFF"
+        width: 52.0
+        height: 88.0
+        shape: rounded_rect
+      VL:
+        fill_color: "#0F766E"
+        border_color: "#5EEAD4"
+        border_width: 1.5
+        text_color: "#FFFFFF"
+        width: 52.0
+        height: 88.0
+        shape: rounded_rect
+      CH1:
+        fill_color: "#334155"
+        border_color: "#94A3B8"
+        border_width: 1.5
+        text_color: "#FFFFFF"
+        width: 52.0
+        height: 88.0
+        shape: rounded_rect
+      CL:
+        fill_color: "#475569"
+        border_color: "#CBD5E1"
+        border_width: 1.5
+        text_color: "#FFFFFF"
+        width: 52.0
+        height: 88.0
+        shape: rounded_rect
+      Hinge:
+        fill_color: "#6D28D9"
+        border_color: "#C4B5FD"
+        border_width: 1.5
+        text_color: "#FFFFFF"
+        width: 38.0
+        height: 52.0
+        shape: capsule
+      CH2:
+        fill_color: "#0369A1"
+        border_color: "#7DD3FC"
+        border_width: 1.5
+        text_color: "#FFFFFF"
+        width: 52.0
+        height: 88.0
+        shape: rounded_rect
+      CH3:
+        fill_color: "#1E40AF"
+        border_color: "#93C5FD"
+        border_width: 1.5
+        text_color: "#FFFFFF"
+        width: 52.0
+        height: 88.0
+        shape: rounded_rect
+      G4S:
+        fill_color: "#374151"
+        border_color: "#9CA3AF"
+        border_width: 1.5
+        text_color: "#FFFFFF"
+        width: 38.0
+        height: 52.0
+        shape: capsule
+
+  Monochrome Publication:
+    orientation: vertical
+    domain_spacing: 16.0
+    chain_spacing: 112.0
+    styles:
+      VH:
+        fill_color: "#F8FAFC"
+        border_color: "#0F172A"
+        border_width: 2.0
+        text_color: "#0F172A"
+        width: 52.0
+        height: 88.0
+        shape: rect
+      VL:
+        fill_color: "#E2E8F0"
+        border_color: "#0F172A"
+        border_width: 2.0
+        text_color: "#0F172A"
+        width: 52.0
+        height: 88.0
+        shape: rect
+      CH1:
+        fill_color: "#CBD5E1"
+        border_color: "#0F172A"
+        border_width: 2.0
+        text_color: "#0F172A"
+        width: 52.0
+        height: 88.0
+        shape: rect
+      CL:
+        fill_color: "#94A3B8"
+        border_color: "#0F172A"
+        border_width: 2.0
+        text_color: "#0F172A"
+        width: 52.0
+        height: 88.0
+        shape: rect
+      Hinge:
+        fill_color: "#475569"
+        border_color: "#0F172A"
+        border_width: 2.0
+        text_color: "#FFFFFF"
+        width: 38.0
+        height: 52.0
+        shape: capsule
+      CH2:
+        fill_color: "#334155"
+        border_color: "#0F172A"
+        border_width: 2.0
+        text_color: "#FFFFFF"
+        width: 52.0
+        height: 88.0
+        shape: rect
+      CH3:
+        fill_color: "#1E293B"
+        border_color: "#0F172A"
+        border_width: 2.0
+        text_color: "#FFFFFF"
+        width: 52.0
+        height: 88.0
+        shape: rect
+      G4S:
+        fill_color: "#64748B"
+        border_color: "#0F172A"
+        border_width: 2.0
+        text_color: "#FFFFFF"
+        width: 38.0
+        height: 52.0
+        shape: ellipse
+
+  High Contrast:
+    orientation: vertical
+    domain_spacing: 20.0
+    chain_spacing: 120.0
+    styles:
+      VH:
+        fill_color: "#FF6B00"
+        border_color: "#FFFFFF"
+        border_width: 2.5
+        text_color: "#000000"
+        width: 54.0
+        height: 90.0
+        shape: hexagon
+      VL:
+        fill_color: "#FFD600"
+        border_color: "#FFFFFF"
+        border_width: 2.5
+        text_color: "#000000"
+        width: 54.0
+        height: 90.0
+        shape: hexagon
+      CH1:
+        fill_color: "#00E5FF"
+        border_color: "#FFFFFF"
+        border_width: 2.5
+        text_color: "#000000"
+        width: 54.0
+        height: 90.0
+        shape: rect
+      CL:
+        fill_color: "#00FF85"
+        border_color: "#FFFFFF"
+        border_width: 2.5
+        text_color: "#000000"
+        width: 54.0
+        height: 90.0
+        shape: rect
+      Hinge:
+        fill_color: "#D500F9"
+        border_color: "#FFFFFF"
+        border_width: 2.5
+        text_color: "#FFFFFF"
+        width: 40.0
+        height: 52.0
+        shape: capsule
+      CH2:
+        fill_color: "#2979FF"
+        border_color: "#FFFFFF"
+        border_width: 2.5
+        text_color: "#FFFFFF"
+        width: 54.0
+        height: 90.0
+        shape: rounded_rect
+      CH3:
+        fill_color: "#651FFF"
+        border_color: "#FFFFFF"
+        border_width: 2.5
+        text_color: "#FFFFFF"
+        width: 54.0
+        height: 90.0
+        shape: rounded_rect
+      G4S:
+        fill_color: "#FF1744"
+        border_color: "#FFFFFF"
+        border_width: 2.5
+        text_color: "#FFFFFF"
+        width: 40.0
+        height: 52.0
+        shape: ellipse
+
+  Pastel Candy:
+    orientation: vertical
+    domain_spacing: 18.0
+    chain_spacing: 116.0
+    styles:
+      VH:
+        fill_color: "#F9A8D4"
+        border_color: "#BE185D"
+        border_width: 1.5
+        text_color: "#500724"
+        width: 52.0
+        height: 88.0
+        shape: ellipse
+      VL:
+        fill_color: "#FDE68A"
+        border_color: "#B45309"
+        border_width: 1.5
+        text_color: "#451A03"
+        width: 52.0
+        height: 88.0
+        shape: ellipse
+      CH1:
+        fill_color: "#A5F3FC"
+        border_color: "#0E7490"
+        border_width: 1.5
+        text_color: "#083344"
+        width: 52.0
+        height: 88.0
+        shape: rounded_rect
+      CL:
+        fill_color: "#C4B5FD"
+        border_color: "#6D28D9"
+        border_width: 1.5
+        text_color: "#2E1065"
+        width: 52.0
+        height: 88.0
+        shape: rounded_rect
+      Hinge:
+        fill_color: "#FDBA74"
+        border_color: "#C2410C"
+        border_width: 1.5
+        text_color: "#431407"
+        width: 38.0
+        height: 52.0
+        shape: capsule
+      CH2:
+        fill_color: "#86EFAC"
+        border_color: "#15803D"
+        border_width: 1.5
+        text_color: "#052E16"
+        width: 52.0
+        height: 88.0
+        shape: rounded_rect
+      CH3:
+        fill_color: "#93C5FD"
+        border_color: "#1D4ED8"
+        border_width: 1.5
+        text_color: "#172554"
+        width: 52.0
+        height: 88.0
+        shape: rounded_rect
+      G4S:
+        fill_color: "#E5E7EB"
+        border_color: "#4B5563"
+        border_width: 1.5
+        text_color: "#111827"
+        width: 38.0
+        height: 52.0
+        shape: capsule

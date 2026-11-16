@@ -20,6 +20,7 @@ from fc_engineer.core import (
     parse_mutation_list,
 )
 from fc_engineer.designer import (
+    DEFAULT_SCHEMATIC_THEME,
     MAX_CHAINS,
     MAX_COORD,
     MAX_CUSTOM_SEQ_LENGTH,
@@ -38,9 +39,11 @@ from fc_engineer.designer import (
     DomainBlock,
     InterChainPairing,
     PolypeptideChain,
+    SchematicTheme,
     assemble_chain_sequence,
     build_preset_map,
     build_schematic_scene,
+    compute_hexagon_vertices,
     get_effective_domain_mutations,
     resolve_domain_base_sequence,
     resolve_domain_sequence,
@@ -860,22 +863,31 @@ def _draw_dashed_arc(
     fill: Tuple[int, int, int, int],
     width: int = 2,
     lift: float = 34.0,
+    orientation: str = "vertical",
 ) -> None:
-    mid_x = (x1 + x2) / 2.0
-    ctrl_y = min(y1, y2) - lift
+    if orientation == "vertical":
+        ctrl_x = max(x1, x2) + lift
+        ctrl_y = (y1 + y2) / 2.0
+    else:
+        ctrl_x = (x1 + x2) / 2.0
+        ctrl_y = min(y1, y2) - lift
     steps = 18
     pts: List[Tuple[float, float]] = []
     for i in range(steps + 1):
         t = i / steps
         inv = 1.0 - t
-        px = inv * inv * x1 + 2.0 * inv * t * mid_x + t * t * x2
+        px = inv * inv * x1 + 2.0 * inv * t * ctrl_x + t * t * x2
         py = inv * inv * y1 + 2.0 * inv * t * ctrl_y + t * t * y2
         pts.append((px, py))
     for i in range(0, len(pts) - 1, 2):
         draw.line([pts[i], pts[i + 1]], fill=fill, width=width)
 
 
-def export_schematic_png(project: AntibodyProject, scale: float = 2.0) -> bytes:
+def export_schematic_png(
+    project: AntibodyProject,
+    scale: float = 2.0,
+    theme: Optional[SchematicTheme] = None,
+) -> bytes:
     """Render a transparent-background RGBA .png 2D schematic from build_schematic_scene()."""
     if (
         isinstance(scale, bool)
@@ -886,7 +898,8 @@ def export_schematic_png(project: AntibodyProject, scale: float = 2.0) -> bytes:
     ):
         raise ValueError("Scale must be a finite number between 0.5 and 4.0.")
 
-    scene = build_schematic_scene(project, build_preset_map(project))
+    active_theme = theme if theme is not None else DEFAULT_SCHEMATIC_THEME
+    scene = build_schematic_scene(project, build_preset_map(project), theme=active_theme)
     min_x, min_y, max_x, max_y = scene.bounds
     width_px = max(1, int(math.ceil((max_x - min_x) * scale)))
     height_px = max(1, int(math.ceil((max_y - min_y) * scale)))
@@ -917,9 +930,10 @@ def export_schematic_png(project: AntibodyProject, scale: float = 2.0) -> bytes:
                 y1,
                 x2,
                 y2,
-                fill=(14, 116, 144, 230),
+                fill=(217, 119, 87, 230),
                 width=stroke_w,
-                lift=30.0 * scale,
+                lift=34.0 * scale,
+                orientation=active_theme.orientation,
             )
         elif pedge.pairing_type == "HINGE_DISULFIDE":
             dx = x2 - x1
@@ -929,7 +943,7 @@ def export_schematic_png(project: AntibodyProject, scale: float = 2.0) -> bytes:
             for sign in (-1.0, 1.0):
                 draw.line(
                     [(x1 + nx * sign, y1 + ny * sign), (x2 + nx * sign, y2 + ny * sign)],
-                    fill=(180, 83, 9, 240),
+                    fill=(224, 159, 90, 240),
                     width=stroke_w,
                 )
         else:
@@ -939,7 +953,7 @@ def export_schematic_png(project: AntibodyProject, scale: float = 2.0) -> bytes:
                 y1,
                 x2,
                 y2,
-                fill=(100, 116, 139, 230),
+                fill=(158, 152, 140, 230),
                 width=stroke_w,
                 dash_len=6.0 * scale,
                 gap_len=4.0 * scale,
@@ -949,40 +963,58 @@ def export_schematic_png(project: AntibodyProject, scale: float = 2.0) -> bytes:
     for edge in scene.edges:
         draw.line(
             [(tx(edge.x1), ty(edge.y1)), (tx(edge.x2), ty(edge.y2))],
-            fill=(71, 85, 105, 255),
+            fill=(125, 120, 109, 255),
             width=max(2, int(round(2.0 * scale))),
         )
 
-    # 3. Draw domain boxes, chain names, domain labels, and mutation badges
+    # 3. Draw domain shapes, chain names, domain labels, and mutation badges
     for node in scene.nodes:
         x0 = tx(node.x)
         y0 = ty(node.y)
-        x1 = x0 + node.width * scale
-        y1 = y0 + node.height * scale
-        outline_col = (239, 68, 68, 255) if node.error_flag else (15, 23, 42, 220)
-        draw.rounded_rectangle(
-            [x0, y0, x1, y1],
-            radius=6.0 * scale,
-            fill=node.fill_color,
-            outline=outline_col,
-            width=max(1, int(round(1.5 * scale))),
-        )
+        w_px = node.width * scale
+        h_px = node.height * scale
+        x1 = x0 + w_px
+        y1 = y0 + h_px
+        outline_col = "#EF4444" if node.error_flag else node.border_color
+        outline_w = max(1, int(round((max(3.0, node.border_width + 1.5) if node.error_flag else node.border_width) * scale)))
+
+        if node.shape == "ellipse":
+            draw.ellipse([x0, y0, x1, y1], fill=node.fill_color, outline=outline_col, width=outline_w)
+        elif node.shape == "hexagon":
+            verts = compute_hexagon_vertices(x0, y0, w_px, h_px)
+            draw.polygon(verts, fill=node.fill_color, outline=outline_col, width=outline_w)
+        else:
+            if node.shape == "rect":
+                radius = 0.0
+            elif node.shape == "capsule":
+                radius = min(w_px, h_px) / 2.0
+            else:
+                radius = 8.0 * scale
+            draw.rounded_rectangle(
+                [x0, y0, x1, y1],
+                radius=radius,
+                fill=node.fill_color,
+                outline=outline_col,
+                width=outline_w,
+            )
+
         cx = (x0 + x1) / 2.0
         cy = (y0 + y1) / 2.0
-        draw.text((cx, cy), node.label, fill=(255, 255, 255, 255), font=font, anchor="mm")
+        draw.text((cx, cy), node.label, fill=node.text_color, font=font, anchor="mm")
 
         if node.is_n_terminus and node.chain_name:
             draw.text(
-                (x0, max(2.0, y0 - 11.0 * scale)),
+                (cx, max(2.0, y0 - 11.0 * scale)),
                 node.chain_name,
-                fill=(15, 23, 42, 255),
+                fill=(100, 116, 139, 255),
                 font=font,
+                anchor="mm",
             )
         if node.badge_text:
             draw.text(
                 (cx, y1 + 8.0 * scale),
                 node.badge_text,
-                fill=(185, 28, 28, 255),
+                fill=(220, 38, 38, 255),
                 font=font,
                 anchor="mm",
             )
@@ -993,11 +1025,14 @@ def export_schematic_png(project: AntibodyProject, scale: float = 2.0) -> bytes:
 
 
 def save_schematic_png(
-    path: str, project: AntibodyProject, scale: float = 2.0
+    path: str,
+    project: AntibodyProject,
+    scale: float = 2.0,
+    theme: Optional[SchematicTheme] = None,
 ) -> None:
     """Save a transparent-background RGBA .png schematic to disk safely."""
     resolved = _validate_file_path(path, (".png",), auto_append=True)
-    png_bytes = export_schematic_png(project, scale=scale)
+    png_bytes = export_schematic_png(project, scale=scale, theme=theme)
     if len(png_bytes) > config.MAX_FILE_SIZE:
         raise ValueError("Rendered PNG exceeds maximum allowed 1MB file size.")
     try:

@@ -35,6 +35,8 @@ SCENE_PADDING: float = 24.0
 VALID_DOMAIN_TYPES = ("VH", "VL", "CH1", "CL", "Hinge", "CH2", "CH3", "G4S")
 NON_CONSTANT_DOMAIN_TYPES = ("VH", "VL", "CL", "G4S")
 VALID_PAIRING_TYPES = ("VH_VL", "CH1_CL", "HINGE_DISULFIDE", "CH3_DIMER")
+VALID_SHAPES = ("rect", "rounded_rect", "capsule", "ellipse", "hexagon")
+VALID_ORIENTATIONS = ("vertical", "horizontal")
 VALID_FORMAT_TYPES = (
     "igg",
     "crossmab",
@@ -133,6 +135,75 @@ class AntibodyProject:
 
 
 @dataclass
+class DomainVisualStyle:
+    """Visual styling attributes for a single antibody domain_type."""
+
+    fill_color: str
+    border_color: str
+    border_width: float
+    text_color: str
+    width: float
+    height: float
+    shape: str = "rounded_rect"
+
+
+@dataclass
+class SchematicTheme:
+    """Complete schematic styling, orientation, and spacing configuration."""
+
+    name: str
+    orientation: str = "vertical"
+    domain_spacing: float = 18.0
+    chain_spacing: float = 116.0
+    styles: Dict[str, DomainVisualStyle] = field(default_factory=dict)
+
+
+DEFAULT_SCHEMATIC_THEME = SchematicTheme(
+    name="Claude Code",
+    orientation="vertical",
+    domain_spacing=18.0,
+    chain_spacing=116.0,
+    styles={
+        "VH": DomainVisualStyle("#D97757", "#F09A7E", 1.5, "#FAF9F5", 52.0, 88.0, "rounded_rect"),
+        "VL": DomainVisualStyle("#E09F5A", "#F2BC82", 1.5, "#141413", 52.0, 88.0, "rounded_rect"),
+        "CH1": DomainVisualStyle("#B85C3E", "#D97757", 1.5, "#FAF9F5", 52.0, 88.0, "rounded_rect"),
+        "CL": DomainVisualStyle("#C48B71", "#DFB099", 1.5, "#FAF9F5", 52.0, 88.0, "rounded_rect"),
+        "Hinge": DomainVisualStyle("#6E6A61", "#9E988C", 1.5, "#FAF9F5", 38.0, 52.0, "capsule"),
+        "CH2": DomainVisualStyle("#5C8A72", "#84B39B", 1.5, "#FAF9F5", 52.0, 88.0, "rounded_rect"),
+        "CH3": DomainVisualStyle("#3D6B58", "#639681", 1.5, "#FAF9F5", 52.0, 88.0, "rounded_rect"),
+        "G4S": DomainVisualStyle("#524F48", "#7D786D", 1.5, "#ECE9E0", 38.0, 52.0, "capsule"),
+    },
+)
+
+
+def compute_hexagon_vertices(
+    x: float, y: float, width: float, height: float
+) -> List[Tuple[float, float]]:
+    """Compute 6 polygon vertices for a hexagon inscribed in [x, x+width] x [y, y+height]."""
+    cx = x + width / 2.0
+    cy = y + height / 2.0
+    if height >= width:
+        inset_y = height * 0.22
+        return [
+            (cx, y),
+            (x + width, y + inset_y),
+            (x + width, y + height - inset_y),
+            (cx, y + height),
+            (x, y + height - inset_y),
+            (x, y + inset_y),
+        ]
+    inset_x = width * 0.22
+    return [
+        (x + inset_x, y),
+        (x + width - inset_x, y),
+        (x + width, cy),
+        (x + width - inset_x, y + height),
+        (x + inset_x, y + height),
+        (x, cy),
+    ]
+
+
+@dataclass
 class SchematicNode:
     """Positioned domain node consumed by the Flet canvas and Pillow PNG exporter."""
 
@@ -149,6 +220,10 @@ class SchematicNode:
     fill_color: str
     badge_text: str
     error_flag: bool
+    border_color: str = "#0F172A"
+    border_width: float = 1.5
+    text_color: str = "#FFFFFF"
+    shape: str = "rounded_rect"
 
 
 @dataclass
@@ -635,14 +710,67 @@ def add_file_custom_mutation(
     return []
 
 
-def reflow_chain_coordinates(chain: PolypeptideChain) -> None:
-    """Position unpinned DomainBlocks left-to-right from the chain's anchor."""
-    for idx, dom in enumerate(chain.domains):
-        if not dom.pinned:
-            nx = max(-MAX_COORD, min(MAX_COORD, float(chain.x) + idx * 116.0))
-            ny = max(-MAX_COORD, min(MAX_COORD, float(chain.y)))
-            dom.x = nx
-            dom.y = ny
+def _resolve_domain_style(
+    domain_type: str, theme: Optional[SchematicTheme] = None
+) -> DomainVisualStyle:
+    active = theme if theme is not None else DEFAULT_SCHEMATIC_THEME
+    if domain_type in active.styles:
+        return active.styles[domain_type]
+    if domain_type in DEFAULT_SCHEMATIC_THEME.styles:
+        return DEFAULT_SCHEMATIC_THEME.styles[domain_type]
+    fallback = DOMAIN_STYLE_MAP.get(domain_type)
+    if fallback is None:
+        raise ValueError(f"Unsupported domain type '{domain_type}'.")
+    w, h, col = fallback
+    return DomainVisualStyle(col, "#0F172A", 1.5, "#FFFFFF", w, h, "rounded_rect")
+
+
+def reflow_chain_coordinates(
+    chain: PolypeptideChain, theme: Optional[SchematicTheme] = None
+) -> None:
+    """Position unpinned DomainBlocks vertically (N->C) or horizontally from the chain anchor."""
+    active = theme if theme is not None else DEFAULT_SCHEMATIC_THEME
+    if active.orientation == "vertical":
+        col_width = max(
+            (_resolve_domain_style(d.domain_type, active).width for d in chain.domains),
+            default=52.0,
+        )
+        cursor = float(chain.y)
+        for dom in chain.domains:
+            style = _resolve_domain_style(dom.domain_type, active)
+            if not dom.pinned:
+                nx = chain.x + (col_width - style.width) / 2.0
+                dom.x = max(-MAX_COORD, min(MAX_COORD, float(nx)))
+                dom.y = max(-MAX_COORD, min(MAX_COORD, float(cursor)))
+            cursor += style.height + active.domain_spacing
+    else:
+        row_height = max(
+            (_resolve_domain_style(d.domain_type, active).height for d in chain.domains),
+            default=44.0,
+        )
+        cursor = float(chain.x)
+        for dom in chain.domains:
+            style = _resolve_domain_style(dom.domain_type, active)
+            if not dom.pinned:
+                ny = chain.y + (row_height - style.height) / 2.0
+                dom.x = max(-MAX_COORD, min(MAX_COORD, float(cursor)))
+                dom.y = max(-MAX_COORD, min(MAX_COORD, float(ny)))
+            cursor += style.width + active.domain_spacing
+
+
+def reflow_project_coordinates(
+    project: AntibodyProject, theme: Optional[SchematicTheme] = None
+) -> None:
+    """Reflow all unpinned chain anchors and unpinned domains according to theme orientation and spacing."""
+    active = theme if theme is not None else DEFAULT_SCHEMATIC_THEME
+    for idx, chain in enumerate(project.chains):
+        if active.orientation == "vertical":
+            chain.x = 40.0 + idx * active.chain_spacing
+            chain.y = 40.0
+        else:
+            chain.x = 40.0
+            chain.y = 40.0 + idx * active.chain_spacing
+        reflow_chain_coordinates(chain, theme=active)
 
 
 def _make_domain(
@@ -993,9 +1121,9 @@ def build_format_template(
         ]
 
     for idx, chain in enumerate(chains):
-        chain.x = 40.0
-        chain.y = 40.0 + idx * 96.0
-        reflow_chain_coordinates(chain)
+        chain.x = 40.0 + idx * DEFAULT_SCHEMATIC_THEME.chain_spacing
+        chain.y = 40.0
+        reflow_chain_coordinates(chain, theme=DEFAULT_SCHEMATIC_THEME)
 
     return AntibodyProject(
         name=title,
@@ -1034,10 +1162,13 @@ def _domain_display_label(domain: DomainBlock) -> str:
 
 
 def build_schematic_scene(
-    project: AntibodyProject, preset_map: Optional[Dict[str, str]] = None
+    project: AntibodyProject,
+    preset_map: Optional[Dict[str, str]] = None,
+    theme: Optional[SchematicTheme] = None,
 ) -> SchematicScene:
     """Build the shared 2D scene representation for interactive Flet rendering and PNG export."""
     resolved_map = preset_map if preset_map is not None else build_preset_map(project)
+    active_theme = theme if theme is not None else DEFAULT_SCHEMATIC_THEME
     nodes: List[SchematicNode] = []
     edges: List[SchematicEdge] = []
     pairing_edges: List[SchematicPairingEdge] = []
@@ -1048,10 +1179,7 @@ def build_schematic_scene(
         for idx, dom in enumerate(chain.domains):
             nx = _validate_coord(dom.x, f"{dom.id}.x")
             ny = _validate_coord(dom.y, f"{dom.id}.y")
-            style = DOMAIN_STYLE_MAP.get(dom.domain_type)
-            if style is None:
-                raise ValueError(f"Unsupported domain type '{dom.domain_type}'.")
-            width, height, fill_color = style
+            style = _resolve_domain_style(dom.domain_type, active_theme)
 
             _, errs = resolve_domain_sequence(dom, resolved_map)
             badge_parts = list(dom.applied_presets)
@@ -1069,26 +1197,40 @@ def build_schematic_scene(
                 domain_type=dom.domain_type,
                 x=nx,
                 y=ny,
-                width=width,
-                height=height,
-                fill_color=fill_color,
+                width=style.width,
+                height=style.height,
+                fill_color=style.fill_color,
                 badge_text=", ".join(badge_parts),
                 error_flag=bool(errs),
+                border_color=style.border_color,
+                border_width=style.border_width,
+                text_color=style.text_color,
+                shape=style.shape,
             )
             nodes.append(node)
             chain_nodes.append(node)
             node_lookup[(chain.id, dom.id)] = node
 
         for prev_node, next_node in zip(chain_nodes, chain_nodes[1:]):
+            if active_theme.orientation == "vertical":
+                x1 = prev_node.x + prev_node.width / 2.0
+                y1 = prev_node.y + prev_node.height
+                x2 = next_node.x + next_node.width / 2.0
+                y2 = next_node.y
+            else:
+                x1 = prev_node.x + prev_node.width
+                y1 = prev_node.y + prev_node.height / 2.0
+                x2 = next_node.x
+                y2 = next_node.y + next_node.height / 2.0
             edges.append(
                 SchematicEdge(
                     chain_id=chain.id,
                     from_domain_id=prev_node.domain_id,
                     to_domain_id=next_node.domain_id,
-                    x1=prev_node.x + prev_node.width,
-                    y1=prev_node.y + prev_node.height / 2.0,
-                    x2=next_node.x,
-                    y2=next_node.y + next_node.height / 2.0,
+                    x1=x1,
+                    y1=y1,
+                    x2=x2,
+                    y2=y2,
                     edge_kind="backbone",
                 )
             )

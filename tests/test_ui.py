@@ -182,6 +182,27 @@ class TestAntibodyStudioController:
         ctrl.load_ab(str(ab_file))
         assert ctrl.project.format_type == "scfv_fc"
 
+    def test_theme_presets_spacing_and_yaml_roundtrip(self, tmp_path):
+        ctrl = AntibodyStudioController("igg")
+        assert ctrl.theme.name == "Claude Code"
+        assert ctrl.theme.orientation == "vertical"
+
+        ctrl.set_spacing(domain_spacing=6.0, chain_spacing=84.0)
+        assert ctrl.theme.domain_spacing == 6.0
+        assert ctrl.theme.chain_spacing == 84.0
+        assert ctrl.project.chains[1].x == 40.0 + 84.0
+
+        theme_path = tmp_path / "custom_theme.yaml"
+        ctrl.save_theme(str(theme_path))
+        assert theme_path.is_file()
+
+        ctrl.apply_theme_preset("High Contrast")
+        assert ctrl.theme.name == "High Contrast"
+
+        loaded = ctrl.load_theme(str(theme_path))
+        assert loaded.domain_spacing == 6.0
+        assert loaded.chain_spacing == 84.0
+
     def test_clipboard_security_timer_race_and_shutdown(self, monkeypatch):
         fake_clip = {"val": ""}
         monkeypatch.setattr("fc_engineer.app.pyperclip.copy", lambda txt: fake_clip.__setitem__("val", txt))

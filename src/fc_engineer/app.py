@@ -16,6 +16,7 @@ from fc_engineer import config
 from fc_engineer.core import CONSTANT_DOMAIN_EU_RANGES
 from fc_engineer.designer import (
     ALLOWED_TEMPLATE_KEYS_BY_TYPE,
+    DEFAULT_SCHEMATIC_THEME,
     DEFAULT_TEMPLATE_KEYS,
     DOMAIN_STYLE_MAP,
     MAX_CHAINS,
@@ -25,20 +26,26 @@ from fc_engineer.designer import (
     MAX_METADATA_LENGTH,
     MAX_PAIRINGS,
     VALID_DOMAIN_TYPES,
+    VALID_ORIENTATIONS,
     VALID_PAIRING_TYPES,
+    VALID_SHAPES,
     AntibodyProject,
     DomainBlock,
+    DomainVisualStyle,
     InterChainPairing,
     PolypeptideChain,
     SchematicScene,
+    SchematicTheme,
     add_file_custom_mutation,
     analyze_chain_developability,
     assemble_chain_sequence,
     build_format_template,
     build_preset_map,
     build_schematic_scene,
+    compute_hexagon_vertices,
     diff_chain_sequences,
     reflow_chain_coordinates,
+    reflow_project_coordinates,
     remove_chain_from_project,
     remove_domain_from_chain,
     remove_preset_from_chain,
@@ -82,9 +89,14 @@ class AntibodyStudioController:
         self.apply_to_all_heavy: bool = False
         self.selected_chain_id: Optional[str] = None
         self.selected_domain_id: Optional[str] = None
+        self.theme_presets: Dict[str, SchematicTheme] = config.load_theme_presets()
+        self.theme: SchematicTheme = copy.deepcopy(
+            self.theme_presets.get(DEFAULT_SCHEMATIC_THEME.name, DEFAULT_SCHEMATIC_THEME)
+        )
         self.project: AntibodyProject = build_format_template(
             initial_format, isotype=isotype, allotype=allotype
         )
+        reflow_project_coordinates(self.project, theme=self.theme)
         self._reset_selection()
 
     def _reset_selection(self) -> None:
@@ -186,8 +198,12 @@ class AntibodyStudioController:
             id=chain_id,
             name=resolved_name,
             domains=[],
-            x=40.0,
-            y=40.0 + len(self.project.chains) * 96.0,
+            x=40.0 + len(self.project.chains) * self.theme.chain_spacing
+            if self.theme.orientation == "vertical"
+            else 40.0,
+            y=40.0
+            if self.theme.orientation == "vertical"
+            else 40.0 + len(self.project.chains) * self.theme.chain_spacing,
         )
         self.project.chains.append(chain)
         self.selected_chain_id = chain.id
@@ -237,7 +253,7 @@ class AntibodyStudioController:
             clamped = max(0, min(len(chain.domains), index))
             chain.domains.insert(clamped, dom)
 
-        reflow_chain_coordinates(chain)
+        reflow_chain_coordinates(chain, theme=self.theme)
         self.selected_chain_id = chain.id
         self.selected_domain_id = dom.id
         return dom
@@ -252,7 +268,7 @@ class AntibodyStudioController:
             raise ValueError("Domain reorder index out of bounds.")
         dom = chain.domains.pop(from_index)
         chain.domains.insert(to_index, dom)
-        reflow_chain_coordinates(chain)
+        reflow_chain_coordinates(chain, theme=self.theme)
         self.selected_chain_id = chain.id
         self.selected_domain_id = dom.id
 
@@ -275,7 +291,7 @@ class AntibodyStudioController:
                 adj = target_index - 1 if target_index > src_idx else target_index
                 clamped = max(0, min(len(src_chain.domains), adj))
                 src_chain.domains.insert(clamped, dom)
-            reflow_chain_coordinates(src_chain)
+            reflow_chain_coordinates(src_chain, theme=self.theme)
             self.selected_chain_id = src_chain.id
             self.selected_domain_id = dom.id
             return
@@ -302,8 +318,8 @@ class AntibodyStudioController:
             clamped = max(0, min(len(dst_chain.domains), target_index))
             dst_chain.domains.insert(clamped, dom)
 
-        reflow_chain_coordinates(src_chain)
-        reflow_chain_coordinates(dst_chain)
+        reflow_chain_coordinates(src_chain, theme=self.theme)
+        reflow_chain_coordinates(dst_chain, theme=self.theme)
         self.selected_chain_id = dst_chain.id
         self.selected_domain_id = dom.id
 
@@ -512,7 +528,37 @@ class AntibodyStudioController:
         return self.project
 
     def save_png(self, path: str, scale: float = 2.0) -> None:
-        save_schematic_png(path, self.project, scale=scale)
+        save_schematic_png(path, self.project, scale=scale, theme=self.theme)
+
+    def apply_theme_preset(self, name: str) -> None:
+        if name not in self.theme_presets:
+            raise ValueError(f"Unknown theme preset '{name}'.")
+        self.theme = copy.deepcopy(self.theme_presets[name])
+        reflow_project_coordinates(self.project, theme=self.theme)
+
+    def set_theme(self, theme: SchematicTheme) -> None:
+        self.theme = copy.deepcopy(theme)
+        reflow_project_coordinates(self.project, theme=self.theme)
+
+    def set_spacing(
+        self,
+        domain_spacing: Optional[float] = None,
+        chain_spacing: Optional[float] = None,
+    ) -> None:
+        if domain_spacing is not None:
+            self.theme.domain_spacing = max(4.0, min(80.0, float(domain_spacing)))
+        if chain_spacing is not None:
+            self.theme.chain_spacing = max(60.0, min(260.0, float(chain_spacing)))
+        reflow_project_coordinates(self.project, theme=self.theme)
+
+    def load_theme(self, path: str) -> SchematicTheme:
+        loaded = config.load_theme_file(path)
+        self.theme = loaded
+        reflow_project_coordinates(self.project, theme=self.theme)
+        return loaded
+
+    def save_theme(self, path: str) -> None:
+        config.save_theme_file(path, self.theme)
 
     def _wipe_os_clipboard_if_matching(self, target_text: str) -> None:
         if not target_text:
@@ -591,20 +637,29 @@ class AntibodyStudioController:
             self.clear_clipboard()
 
 
-def _build_canvas_shapes(scene: SchematicScene) -> List[Any]:
+def _build_canvas_shapes(
+    scene: SchematicScene,
+    theme: Optional[SchematicTheme] = None,
+    selected_pair: Optional[Tuple[Optional[str], Optional[str]]] = None,
+) -> List[Any]:
+    active_theme = theme if theme is not None else DEFAULT_SCHEMATIC_THEME
     shapes: List[Any] = []
     for pedge in scene.pairing_edges:
         if pedge.chain_a_id == pedge.chain_b_id and pedge.pairing_type == "VH_VL":
-            mid_x = (pedge.x1 + pedge.x2) / 2.0
-            ctrl_y = min(pedge.y1, pedge.y2) - 30.0
+            if active_theme.orientation == "vertical":
+                ctrl_x = max(pedge.x1, pedge.x2) + 34.0
+                ctrl_y = (pedge.y1 + pedge.y2) / 2.0
+            else:
+                ctrl_x = (pedge.x1 + pedge.x2) / 2.0
+                ctrl_y = min(pedge.y1, pedge.y2) - 30.0
             shapes.append(
                 cv.Path(
                     elements=[
                         cv.Path.MoveTo(pedge.x1, pedge.y1),
-                        cv.Path.QuadraticTo(mid_x, ctrl_y, pedge.x2, pedge.y2),
+                        cv.Path.QuadraticTo(ctrl_x, ctrl_y, pedge.x2, pedge.y2),
                     ],
                     paint=ft.Paint(
-                        color="#0E7490",
+                        color="#D97757",
                         stroke_width=2,
                         style=ft.PaintingStyle.STROKE,
                         stroke_dash_pattern=[6, 4],
@@ -623,7 +678,7 @@ def _build_canvas_shapes(scene: SchematicScene) -> List[Any]:
                         pedge.y1 + ny * sign,
                         pedge.x2 + nx * sign,
                         pedge.y2 + ny * sign,
-                        paint=ft.Paint(color="#B45309", stroke_width=2),
+                        paint=ft.Paint(color="#E09F5A", stroke_width=2),
                     )
                 )
         else:
@@ -634,7 +689,7 @@ def _build_canvas_shapes(scene: SchematicScene) -> List[Any]:
                     pedge.x2,
                     pedge.y2,
                     paint=ft.Paint(
-                        color="#64748B",
+                        color="#9E988C",
                         stroke_width=2,
                         stroke_dash_pattern=[6, 4],
                     ),
@@ -648,9 +703,64 @@ def _build_canvas_shapes(scene: SchematicScene) -> List[Any]:
                 edge.y1,
                 edge.x2,
                 edge.y2,
-                paint=ft.Paint(color="#475569", stroke_width=2.5),
+                paint=ft.Paint(color="#7D786D", stroke_width=2.5),
             )
         )
+
+    sel_cid, sel_did = selected_pair if selected_pair is not None else (None, None)
+    for node in scene.nodes:
+        is_sel = sel_cid == node.chain_id and sel_did == node.domain_id
+        border_color = "#FACC15" if is_sel else ("#EF4444" if node.error_flag else node.border_color)
+        border_width = (
+            max(2.8, node.border_width + 1.0)
+            if is_sel
+            else (max(3.0, node.border_width + 1.5) if node.error_flag else node.border_width)
+        )
+        fill_paint = ft.Paint(color=node.fill_color, style=ft.PaintingStyle.FILL)
+        stroke_paint = ft.Paint(
+            color=border_color,
+            stroke_width=border_width,
+            style=ft.PaintingStyle.STROKE,
+        )
+
+        if node.shape == "ellipse":
+            shapes.append(cv.Oval(node.x, node.y, node.width, node.height, paint=fill_paint))
+            shapes.append(cv.Oval(node.x, node.y, node.width, node.height, paint=stroke_paint))
+        elif node.shape == "hexagon":
+            verts = compute_hexagon_vertices(node.x, node.y, node.width, node.height)
+            elems = [cv.Path.MoveTo(verts[0][0], verts[0][1])]
+            for vx, vy in verts[1:]:
+                elems.append(cv.Path.LineTo(vx, vy))
+            elems.append(cv.Path.Close())
+            shapes.append(cv.Path(elements=elems, paint=fill_paint))
+            shapes.append(cv.Path(elements=elems, paint=stroke_paint))
+        else:
+            if node.shape == "rect":
+                radius = 0.0
+            elif node.shape == "capsule":
+                radius = min(node.width, node.height) / 2.0
+            else:
+                radius = 8.0
+            shapes.append(
+                cv.Rect(
+                    node.x,
+                    node.y,
+                    node.width,
+                    node.height,
+                    border_radius=radius,
+                    paint=fill_paint,
+                )
+            )
+            shapes.append(
+                cv.Rect(
+                    node.x,
+                    node.y,
+                    node.width,
+                    node.height,
+                    border_radius=radius,
+                    paint=stroke_paint,
+                )
+            )
     return shapes
 
 
@@ -661,7 +771,8 @@ def build_studio_ui(
     ctrl = controller if controller is not None else AntibodyStudioController()
     page.title = "Fc Engineering Studio"
     page.padding = 10
-    page.theme_mode = ft.ThemeMode.LIGHT
+    page.theme_mode = ft.ThemeMode.DARK
+    page.bgcolor = "#141413"
     page.window.prevent_close = True
 
     file_picker = ft.FilePicker()
@@ -750,8 +861,14 @@ def build_studio_ui(
         return _on_accept
 
     def rebuild_canvas_only() -> None:
-        scene = build_schematic_scene(ctrl.project, ctrl.get_preset_map())
-        canvas_bg.shapes = _build_canvas_shapes(scene)
+        scene = build_schematic_scene(
+            ctrl.project, ctrl.get_preset_map(), theme=ctrl.theme
+        )
+        canvas_bg.shapes = _build_canvas_shapes(
+            scene,
+            theme=ctrl.theme,
+            selected_pair=(ctrl.selected_chain_id, ctrl.selected_domain_id),
+        )
         max_x, max_y = scene.bounds[2], scene.bounds[3]
         canvas_w = max(860.0, max_x + 48.0)
         canvas_h = max(420.0, max_y + 48.0)
@@ -763,13 +880,6 @@ def build_studio_ui(
         ]
 
         for node in scene.nodes:
-            is_sel = (
-                ctrl.selected_chain_id == node.chain_id
-                and ctrl.selected_domain_id == node.domain_id
-            )
-            border_color = "#FACC15" if is_sel else ("#EF4444" if node.error_flag else "#0F172A")
-            border_width = 2.5 if is_sel else 1.2
-
             dom_lookup: Optional[DomainBlock] = None
             for c in ctrl.project.chains:
                 if c.id == node.chain_id:
@@ -812,20 +922,19 @@ def build_studio_ui(
                         node.chain_name,
                         size=10,
                         weight=ft.FontWeight.BOLD,
-                        color="#0F172A",
+                        color="#FAF9F5",
                     )
                 )
             box_col.append(
                 ft.Container(
                     width=node.width,
                     height=node.height,
-                    bgcolor=node.fill_color,
-                    border=ft.Border.all(border_width, border_color),
-                    border_radius=6,
+                    bgcolor=ft.Colors.TRANSPARENT,
+                    border=None,
                     alignment=ft.Alignment.CENTER,
                     content=ft.Text(
                         node.label,
-                        color="#FFFFFF",
+                        color=node.text_color,
                         size=11,
                         weight=ft.FontWeight.BOLD,
                     ),
@@ -836,7 +945,7 @@ def build_studio_ui(
                     ft.Text(
                         node.badge_text,
                         size=9,
-                        color="#B91C1C",
+                        color="#F09A7E",
                         max_lines=1,
                     )
                 )
@@ -1498,12 +1607,200 @@ def build_studio_ui(
         for dtype in VALID_DOMAIN_TYPES
     ]
 
+    theme_dd = ft.Dropdown(
+        label="Theme Preset",
+        value=ctrl.theme.name if ctrl.theme.name in ctrl.theme_presets else None,
+        width=185,
+        dense=True,
+        options=[ft.dropdown.Option(k) for k in ctrl.theme_presets.keys()],
+    )
+
+    domain_spacing_slider = ft.Slider(
+        min=4.0,
+        max=80.0,
+        divisions=38,
+        value=ctrl.theme.domain_spacing,
+        label="Domain Gap: {value}px",
+        width=150,
+    )
+    chain_spacing_slider = ft.Slider(
+        min=60.0,
+        max=260.0,
+        divisions=40,
+        value=ctrl.theme.chain_spacing,
+        label="Chain Gap: {value}px",
+        width=150,
+    )
+
+    def on_theme_preset_select(e: ft.ControlEvent) -> None:
+        if e.control.value:
+            ctrl.apply_theme_preset(e.control.value)
+            domain_spacing_slider.value = ctrl.theme.domain_spacing
+            chain_spacing_slider.value = ctrl.theme.chain_spacing
+            render_workspace()
+
+    theme_dd.on_select = on_theme_preset_select
+
+    def on_domain_spacing_change(e: ft.ControlEvent) -> None:
+        ctrl.set_spacing(domain_spacing=float(e.control.value))
+        rebuild_canvas_only()
+        page.update()
+
+    def on_chain_spacing_change(e: ft.ControlEvent) -> None:
+        ctrl.set_spacing(chain_spacing=float(e.control.value))
+        rebuild_canvas_only()
+        page.update()
+
+    domain_spacing_slider.on_change = on_domain_spacing_change
+    chain_spacing_slider.on_change = on_chain_spacing_change
+
+    def apply_spacing_preset(dom_gap: float, ch_gap: float) -> None:
+        ctrl.set_spacing(domain_spacing=dom_gap, chain_spacing=ch_gap)
+        domain_spacing_slider.value = ctrl.theme.domain_spacing
+        chain_spacing_slider.value = ctrl.theme.chain_spacing
+        render_workspace()
+
+    async def on_load_theme(e: ft.ControlEvent) -> None:
+        files = await file_picker.pick_files(
+            dialog_title="Load Schematic Theme (.yaml)",
+            file_type=ft.FilePickerFileType.CUSTOM,
+            allowed_extensions=["yaml", "yml"],
+        )
+        if not files or not files[0].path:
+            return
+        try:
+            loaded = ctrl.load_theme(files[0].path)
+            theme_dd.value = loaded.name if loaded.name in ctrl.theme_presets else None
+            domain_spacing_slider.value = loaded.domain_spacing
+            chain_spacing_slider.value = loaded.chain_spacing
+            notify(f"Loaded theme {os.path.basename(files[0].path)}")
+            render_workspace()
+        except Exception as err:
+            notify(str(err), is_error=True)
+
+    async def on_save_theme(e: ft.ControlEvent) -> None:
+        dest = await file_picker.save_file(
+            dialog_title="Save Schematic Theme (.yaml)",
+            file_name="schematic_theme.yaml",
+            file_type=ft.FilePickerFileType.CUSTOM,
+            allowed_extensions=["yaml", "yml"],
+        )
+        if not dest:
+            return
+        try:
+            ctrl.save_theme(dest)
+            notify(f"Saved theme {os.path.basename(dest)}")
+        except Exception as err:
+            notify(str(err), is_error=True)
+
+    def on_open_theme_editor(e: ft.ControlEvent) -> None:
+        draft = copy.deepcopy(ctrl.theme)
+        orient_dd = ft.Dropdown(
+            label="Orientation",
+            value=draft.orientation,
+            options=[ft.dropdown.Option(o) for o in VALID_ORIENTATIONS],
+            dense=True,
+            width=150,
+        )
+        domain_dd = ft.Dropdown(
+            label="Domain Type",
+            value=VALID_DOMAIN_TYPES[0],
+            options=[ft.dropdown.Option(dt) for dt in VALID_DOMAIN_TYPES],
+            dense=True,
+            width=140,
+        )
+        cur = draft.styles[VALID_DOMAIN_TYPES[0]]
+        fill_tf = ft.TextField(label="Fill (#RRGGBB)", value=cur.fill_color, dense=True, width=130)
+        border_tf = ft.TextField(label="Border (#RRGGBB)", value=cur.border_color, dense=True, width=130)
+        text_tf = ft.TextField(label="Text (#RRGGBB)", value=cur.text_color, dense=True, width=130)
+        bw_tf = ft.TextField(label="Border Width", value=str(cur.border_width), dense=True, width=110)
+        w_tf = ft.TextField(label="Width", value=str(cur.width), dense=True, width=110)
+        h_tf = ft.TextField(label="Height", value=str(cur.height), dense=True, width=110)
+        shape_dd = ft.Dropdown(
+            label="Shape",
+            value=cur.shape,
+            options=[ft.dropdown.Option(s) for s in VALID_SHAPES],
+            dense=True,
+            width=150,
+        )
+
+        def load_domain_fields(dtype: str) -> None:
+            st = draft.styles[dtype]
+            fill_tf.value = st.fill_color
+            border_tf.value = st.border_color
+            text_tf.value = st.text_color
+            bw_tf.value = str(st.border_width)
+            w_tf.value = str(st.width)
+            h_tf.value = str(st.height)
+            shape_dd.value = st.shape
+
+        def save_current_domain_fields(dtype: str) -> None:
+            draft.styles[dtype] = DomainVisualStyle(
+                fill_color=(fill_tf.value or "#D97757").strip(),
+                border_color=(border_tf.value or "#F09A7E").strip(),
+                border_width=max(0.5, min(8.0, float(bw_tf.value or 1.5))),
+                text_color=(text_tf.value or "#FAF9F5").strip(),
+                width=max(32.0, min(240.0, float(w_tf.value or 52.0))),
+                height=max(16.0, min(120.0, float(h_tf.value or 88.0))),
+                shape=shape_dd.value or "rounded_rect",
+            )
+
+        active_dtype = {"val": VALID_DOMAIN_TYPES[0]}
+
+        def on_domain_switch(ev: ft.ControlEvent) -> None:
+            try:
+                save_current_domain_fields(active_dtype["val"])
+            except ValueError:
+                pass
+            active_dtype["val"] = ev.control.value or VALID_DOMAIN_TYPES[0]
+            load_domain_fields(active_dtype["val"])
+            page.update()
+
+        domain_dd.on_select = on_domain_switch
+
+        def on_apply_dialog(ev: ft.ControlEvent) -> None:
+            try:
+                save_current_domain_fields(active_dtype["val"])
+                draft.orientation = orient_dd.value or "vertical"
+                ctrl.set_theme(draft)
+                dlg.open = False
+                render_workspace()
+            except Exception as err:
+                notify(str(err), is_error=True)
+
+        def on_close_dialog(ev: ft.ControlEvent) -> None:
+            dlg.open = False
+            page.update()
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("Customize Schematic Theme"),
+            content=ft.Column(
+                tight=True,
+                spacing=8,
+                controls=[
+                    ft.Row(controls=[orient_dd, domain_dd]),
+                    ft.Row(controls=[fill_tf, border_tf, text_tf]),
+                    ft.Row(controls=[bw_tf, w_tf, h_tf, shape_dd]),
+                ],
+            ),
+            actions=[
+                ft.TextButton("Cancel", on_click=on_close_dialog),
+                ft.Button("Apply Theme", on_click=on_apply_dialog),
+            ],
+        )
+        if hasattr(page, "show_dialog"):
+            page.show_dialog(dlg)
+
     toolbar = ft.Row(
         wrap=True,
         spacing=8,
         controls=[
             project_name_tf,
             format_dd,
+            theme_dd,
+            ft.OutlinedButton("Customize Theme", on_click=on_open_theme_editor),
+            ft.OutlinedButton("Load Theme .yaml", on_click=on_load_theme),
+            ft.OutlinedButton("Save Theme .yaml", on_click=on_save_theme),
             ft.Button(
                 "Add Chain",
                 on_click=lambda e: (ctrl.add_chain(), render_workspace()),
@@ -1522,16 +1819,17 @@ def build_studio_ui(
     left_panel = ft.Container(
         width=240,
         padding=8,
-        border=ft.Border.all(1, "#CBD5E1"),
+        bgcolor="#1E1E1C",
+        border=ft.Border.all(1, "#3D3B35"),
         border_radius=8,
         content=ft.Column(
             scroll=ft.ScrollMode.AUTO,
             spacing=8,
             controls=[
-                ft.Text("Domain Palette", size=14, weight=ft.FontWeight.BOLD),
+                ft.Text("Domain Palette", size=14, weight=ft.FontWeight.BOLD, color="#FAF9F5"),
                 ft.Row(wrap=True, spacing=6, controls=palette_cards),
-                ft.Divider(),
-                ft.Text("Pairings", size=14, weight=ft.FontWeight.BOLD),
+                ft.Divider(color="#3D3B35"),
+                ft.Text("Pairings", size=14, weight=ft.FontWeight.BOLD, color="#FAF9F5"),
                 pairing_controls_col,
             ],
         ),
@@ -1540,17 +1838,36 @@ def build_studio_ui(
     center_panel = ft.Container(
         expand=True,
         padding=8,
-        border=ft.Border.all(1, "#CBD5E1"),
+        bgcolor="#1E1E1C",
+        border=ft.Border.all(1, "#3D3B35"),
         border_radius=8,
         content=ft.Column(
             expand=True,
             spacing=8,
             controls=[
-                ft.Text("2D Interactive Schematic", size=14, weight=ft.FontWeight.BOLD),
+                ft.Row(
+                    wrap=True,
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    controls=[
+                        ft.Text("2D Interactive Schematic", size=14, weight=ft.FontWeight.BOLD, color="#FAF9F5"),
+                        ft.Row(
+                            spacing=6,
+                            controls=[
+                                ft.Text("Domain Gap", size=11, color="#A6A299"),
+                                domain_spacing_slider,
+                                ft.Text("Chain Gap", size=11, color="#A6A299"),
+                                chain_spacing_slider,
+                                ft.OutlinedButton("Compact", on_click=lambda e: apply_spacing_preset(6.0, 84.0)),
+                                ft.OutlinedButton("Normal", on_click=lambda e: apply_spacing_preset(18.0, 116.0)),
+                                ft.OutlinedButton("Wide", on_click=lambda e: apply_spacing_preset(36.0, 156.0)),
+                            ],
+                        ),
+                    ],
+                ),
                 ft.Container(
                     expand=True,
-                    bgcolor="#F8FAFC",
-                    border=ft.Border.all(1, "#E2E8F0"),
+                    bgcolor="#141413",
+                    border=ft.Border.all(1, "#3D3B35"),
                     border_radius=6,
                     content=ft.Column(
                         scroll=ft.ScrollMode.AUTO,
@@ -1566,6 +1883,7 @@ def build_studio_ui(
                     "Polypeptide Chains (N -> C Drop Targets)",
                     size=13,
                     weight=ft.FontWeight.BOLD,
+                    color="#FAF9F5",
                 ),
                 ft.Container(height=190, content=chain_strip_col),
             ],
@@ -1575,7 +1893,8 @@ def build_studio_ui(
     right_panel = ft.Container(
         width=360,
         padding=8,
-        border=ft.Border.all(1, "#CBD5E1"),
+        bgcolor="#1E1E1C",
+        border=ft.Border.all(1, "#3D3B35"),
         border_radius=8,
         content=inspector_col,
     )

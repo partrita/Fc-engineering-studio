@@ -547,8 +547,8 @@ def test_reflow_pruning_and_schematic_scene():
     assert (ch3.x, ch3.y) == (777.0, 888.0)
 
     scene = build_schematic_scene(proj)
-    assert scene.bounds[2] >= 777.0 + 96.0 + SCENE_PADDING
-    assert scene.bounds[3] >= 888.0 + 44.0 + SCENE_PADDING
+    assert scene.bounds[2] >= 777.0 + 52.0 + SCENE_PADDING
+    assert scene.bounds[3] >= 888.0 + 88.0 + SCENE_PADDING
     ch3_node = next(n for n in scene.nodes if n.domain_id == ch3.id)
     assert ch3_node.badge_text == "Knob, K360E, Q362E, +1"
 

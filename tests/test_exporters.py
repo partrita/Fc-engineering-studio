@@ -330,3 +330,18 @@ class TestSchematicPngExporter:
         with pytest.raises(ValueError):
             export_schematic_png(proj, scale=2.0)
 
+    def test_export_png_custom_theme_all_shapes_and_orientations(self):
+        from fc_engineer.config import load_theme_presets
+
+        proj = build_format_template("scfv_fc")
+        presets = load_theme_presets()
+        assert "Claude Code" in presets
+        for preset_name in ("Claude Code", "High Contrast", "Monochrome Publication"):
+            png_bytes = export_schematic_png(proj, scale=1.0, theme=presets[preset_name])
+            assert png_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+
+        hc_theme = presets["High Contrast"]
+        hc_theme.orientation = "horizontal"
+        png_horiz = export_schematic_png(proj, scale=1.0, theme=hc_theme)
+        assert png_horiz.startswith(b"\x89PNG\r\n\x1a\n")
+

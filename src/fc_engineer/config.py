@@ -57,7 +57,16 @@ class NoAliasSafeLoader(yaml.SafeLoader):
 
 
 def _data_dir() -> str:
-    return os.path.join(os.path.dirname(__file__), "data")
+    local = os.path.join(os.path.dirname(__file__), "data")
+    if os.path.isdir(local):
+        return local
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", "")
+        if meipass:
+            frozen_data = os.path.join(meipass, "fc_engineer", "data")
+            if os.path.isdir(frozen_data):
+                return frozen_data
+    return local
 
 
 def _load_yaml_dict(path: str) -> Dict[str, Any]:
@@ -185,3 +194,397 @@ def _load_all_config() -> None:
 
 
 _load_all_config()
+
+
+_HEX_COLOR_RE = re.compile(r"#[0-9A-Fa-f]{6}\Z")
+
+
+def _validate_hex_color(val: Any, field_name: str) -> str:
+    if not isinstance(val, str) or not _HEX_COLOR_RE.fullmatch(val):
+        raise ValueError(f"{field_name} must be a #RRGGBB hex color string.")
+    return val.upper()
+
+
+def _validate_bounded_float(
+    val: Any, field_name: str, low: float, high: float
+) -> float:
+    if isinstance(val, bool) or not isinstance(val, (int, float)):
+        raise ValueError(f"{field_name} must be a number.")
+    fval = float(val)
+    if fval < low or fval > high:
+        raise ValueError(f"{field_name} must be between {low} and {high}.")
+    return fval
+
+
+def _parse_theme_dict(name: str, raw: Any) -> Any:
+    from fc_engineer.designer import (
+        DEFAULT_SCHEMATIC_THEME,
+        DomainVisualStyle,
+        SchematicTheme,
+        VALID_DOMAIN_TYPES,
+        VALID_ORIENTATIONS,
+        VALID_SHAPES,
+    )
+
+    if not isinstance(raw, dict):
+        raise ValueError("Theme entry must be a mapping.")
+    orientation = raw.get("orientation", DEFAULT_SCHEMATIC_THEME.orientation)
+    if orientation not in VALID_ORIENTATIONS:
+        raise ValueError(f"Invalid theme orientation '{orientation}'.")
+    domain_spacing = _validate_bounded_float(
+        raw.get("domain_spacing", DEFAULT_SCHEMATIC_THEME.domain_spacing),
+        "domain_spacing",
+        4.0,
+        80.0,
+    )
+    chain_spacing = _validate_bounded_float(
+        raw.get("chain_spacing", DEFAULT_SCHEMATIC_THEME.chain_spacing),
+        "chain_spacing",
+        60.0,
+        260.0,
+    )
+    raw_styles = raw.get("styles")
+    if not isinstance(raw_styles, dict):
+        raise ValueError("Theme 'styles' must be a mapping.")
+
+    styles: Dict[str, DomainVisualStyle] = {}
+    for dtype in VALID_DOMAIN_TYPES:
+        dflt = DEFAULT_SCHEMATIC_THEME.styles[dtype]
+        entry = raw_styles.get(dtype)
+        if entry is None:
+            styles[dtype] = DomainVisualStyle(
+                dflt.fill_color,
+                dflt.border_color,
+                dflt.border_width,
+                dflt.text_color,
+                dflt.width,
+                dflt.height,
+                dflt.shape,
+            )
+            continue
+        if not isinstance(entry, dict):
+            raise ValueError(f"Style for '{dtype}' must be a mapping.")
+        shape = entry.get("shape", dflt.shape)
+        if shape not in VALID_SHAPES:
+            raise ValueError(f"Invalid shape '{shape}' for '{dtype}'.")
+        styles[dtype] = DomainVisualStyle(
+            fill_color=_validate_hex_color(
+                entry.get("fill_color", dflt.fill_color), f"{dtype}.fill_color"
+            ),
+            border_color=_validate_hex_color(
+                entry.get("border_color", dflt.border_color), f"{dtype}.border_color"
+            ),
+            border_width=_validate_bounded_float(
+                entry.get("border_width", dflt.border_width),
+                f"{dtype}.border_width",
+                0.5,
+                8.0,
+            ),
+            text_color=_validate_hex_color(
+                entry.get("text_color", dflt.text_color), f"{dtype}.text_color"
+            ),
+            width=_validate_bounded_float(
+                entry.get("width", dflt.width), f"{dtype}.width", 32.0, 240.0
+            ),
+            height=_validate_bounded_float(
+                entry.get("height", dflt.height), f"{dtype}.height", 16.0, 120.0
+            ),
+            shape=shape,
+        )
+    return SchematicTheme(
+        name=name,
+        orientation=orientation,
+        domain_spacing=domain_spacing,
+        chain_spacing=chain_spacing,
+        styles=styles,
+    )
+
+
+def load_theme_presets() -> Dict[str, Any]:
+    """Load built-in schematic theme presets from themes.yaml."""
+    from fc_engineer.designer import DEFAULT_SCHEMATIC_THEME
+
+    themes_path = os.path.join(_data_dir(), "themes.yaml")
+    data = _load_yaml_dict(themes_path)
+    presets: Dict[str, Any] = {}
+    raw_presets = data.get("presets") if isinstance(data, dict) else None
+    if isinstance(raw_presets, dict):
+        for name, raw in raw_presets.items():
+            if isinstance(name, str) and name.strip():
+                try:
+                    presets[name] = _parse_theme_dict(name, raw)
+                except Exception as e:
+                    log_sanitized_error(logger, f"Invalid built-in theme '{name}'", e)
+    if DEFAULT_SCHEMATIC_THEME.name not in presets:
+        presets[DEFAULT_SCHEMATIC_THEME.name] = DEFAULT_SCHEMATIC_THEME
+    return presets
+
+
+def parse_theme_yaml(content: str) -> Any:
+    """Parse and validate a standalone .yaml schematic theme string."""
+    if not isinstance(content, str):
+        raise ValueError("Theme content must be a string.")
+    if len(content.encode("utf-8")) > MAX_FILE_SIZE:
+        raise ValueError("Theme content exceeds maximum 1MB size.")
+    try:
+        data = yaml.load(content, Loader=NoAliasSafeLoader)  # nosec B506
+    except yaml.YAMLError as e:
+        raise ValueError(f"Malformed theme YAML: {e}") from None
+    if not isinstance(data, dict):
+        raise ValueError("Theme YAML root must be a mapping.")
+    name = str(data.get("name", "Custom Theme")).strip() or "Custom Theme"
+    return _parse_theme_dict(name, data)
+
+
+def serialize_theme_yaml(theme: Any) -> str:
+    """Serialize a SchematicTheme to a standalone YAML string."""
+    payload = {
+        "schema_version": 1,
+        "name": theme.name,
+        "orientation": theme.orientation,
+        "domain_spacing": float(theme.domain_spacing),
+        "chain_spacing": float(theme.chain_spacing),
+        "styles": {
+            dtype: {
+                "fill_color": st.fill_color,
+                "border_color": st.border_color,
+                "border_width": float(st.border_width),
+                "text_color": st.text_color,
+                "width": float(st.width),
+                "height": float(st.height),
+                "shape": st.shape,
+            }
+            for dtype, st in theme.styles.items()
+        },
+    }
+    return yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
+
+
+def load_theme_file(path: str) -> Any:
+    """Load and validate a standalone .yaml/.yml theme file within 1MB bounds."""
+    if not isinstance(path, str) or not path.strip():
+        raise ValueError("Theme file path cannot be empty.")
+    resolved = os.path.abspath(path)
+    base_name = os.path.basename(resolved)
+    if not resolved.lower().endswith((".yaml", ".yml")):
+        raise ValueError("Theme file must have a .yaml or .yml extension.")
+    if not os.path.isfile(resolved):
+        raise ValueError(f"Theme file '{base_name}' does not exist.")
+    if os.path.getsize(resolved) > MAX_FILE_SIZE:
+        raise ValueError(f"Theme file '{base_name}' exceeds maximum 1MB size.")
+    with open(resolved, "r", encoding="utf-8") as f:
+        content = f.read(MAX_FILE_SIZE + 1)
+    if len(content.encode("utf-8")) > MAX_FILE_SIZE:
+        raise ValueError(f"Theme file '{base_name}' exceeds maximum 1MB size.")
+    return parse_theme_yaml(content)
+
+
+def save_theme_file(path: str, theme: Any) -> None:
+    """Save a SchematicTheme to a standalone .yaml file."""
+    if not isinstance(path, str) or not path.strip():
+        raise ValueError("Theme file path cannot be empty.")
+    resolved = os.path.abspath(path)
+    if not resolved.lower().endswith((".yaml", ".yml")):
+        resolved += ".yaml"
+    payload = serialize_theme_yaml(theme)
+    if len(payload.encode("utf-8")) > MAX_FILE_SIZE:
+        raise ValueError("Serialized theme exceeds 1MB file limit.")
+    with open(resolved, "w", encoding="utf-8") as f:
+        f.write(payload)
+
+
+_HEX_COLOR_RE = re.compile(r"#[0-9A-Fa-f]{6}\Z")
+
+
+def _validate_hex_color(val: Any, field_name: str) -> str:
+    if not isinstance(val, str) or not _HEX_COLOR_RE.fullmatch(val):
+        raise ValueError(f"{field_name} must be a #RRGGBB hex color string.")
+    return val.upper()
+
+
+def _validate_bounded_float(
+    val: Any, field_name: str, low: float, high: float
+) -> float:
+    if isinstance(val, bool) or not isinstance(val, (int, float)):
+        raise ValueError(f"{field_name} must be a number.")
+    fval = float(val)
+    if fval < low or fval > high:
+        raise ValueError(f"{field_name} must be between {low} and {high}.")
+    return fval
+
+
+def _parse_theme_dict(name: str, raw: Any) -> Any:
+    from fc_engineer.designer import (
+        DEFAULT_SCHEMATIC_THEME,
+        DomainVisualStyle,
+        SchematicTheme,
+        VALID_DOMAIN_TYPES,
+        VALID_ORIENTATIONS,
+        VALID_SHAPES,
+    )
+
+    if not isinstance(raw, dict):
+        raise ValueError("Theme entry must be a mapping.")
+    orientation = raw.get("orientation", DEFAULT_SCHEMATIC_THEME.orientation)
+    if orientation not in VALID_ORIENTATIONS:
+        raise ValueError(f"Invalid theme orientation '{orientation}'.")
+    domain_spacing = _validate_bounded_float(
+        raw.get("domain_spacing", DEFAULT_SCHEMATIC_THEME.domain_spacing),
+        "domain_spacing",
+        4.0,
+        80.0,
+    )
+    chain_spacing = _validate_bounded_float(
+        raw.get("chain_spacing", DEFAULT_SCHEMATIC_THEME.chain_spacing),
+        "chain_spacing",
+        60.0,
+        260.0,
+    )
+    raw_styles = raw.get("styles")
+    if not isinstance(raw_styles, dict):
+        raise ValueError("Theme 'styles' must be a mapping.")
+
+    styles: Dict[str, DomainVisualStyle] = {}
+    for dtype in VALID_DOMAIN_TYPES:
+        dflt = DEFAULT_SCHEMATIC_THEME.styles[dtype]
+        entry = raw_styles.get(dtype)
+        if entry is None:
+            styles[dtype] = DomainVisualStyle(
+                dflt.fill_color,
+                dflt.border_color,
+                dflt.border_width,
+                dflt.text_color,
+                dflt.width,
+                dflt.height,
+                dflt.shape,
+            )
+            continue
+        if not isinstance(entry, dict):
+            raise ValueError(f"Style for '{dtype}' must be a mapping.")
+        shape = entry.get("shape", dflt.shape)
+        if shape not in VALID_SHAPES:
+            raise ValueError(f"Invalid shape '{shape}' for '{dtype}'.")
+        styles[dtype] = DomainVisualStyle(
+            fill_color=_validate_hex_color(
+                entry.get("fill_color", dflt.fill_color), f"{dtype}.fill_color"
+            ),
+            border_color=_validate_hex_color(
+                entry.get("border_color", dflt.border_color), f"{dtype}.border_color"
+            ),
+            border_width=_validate_bounded_float(
+                entry.get("border_width", dflt.border_width),
+                f"{dtype}.border_width",
+                0.5,
+                8.0,
+            ),
+            text_color=_validate_hex_color(
+                entry.get("text_color", dflt.text_color), f"{dtype}.text_color"
+            ),
+            width=_validate_bounded_float(
+                entry.get("width", dflt.width), f"{dtype}.width", 32.0, 240.0
+            ),
+            height=_validate_bounded_float(
+                entry.get("height", dflt.height), f"{dtype}.height", 16.0, 120.0
+            ),
+            shape=shape,
+        )
+    return SchematicTheme(
+        name=name,
+        orientation=orientation,
+        domain_spacing=domain_spacing,
+        chain_spacing=chain_spacing,
+        styles=styles,
+    )
+
+
+def load_theme_presets() -> Dict[str, Any]:
+    """Load built-in schematic theme presets from themes.yaml."""
+    from fc_engineer.designer import DEFAULT_SCHEMATIC_THEME
+
+    themes_path = os.path.join(_data_dir(), "themes.yaml")
+    data = _load_yaml_dict(themes_path)
+    presets: Dict[str, Any] = {}
+    raw_presets = data.get("presets") if isinstance(data, dict) else None
+    if isinstance(raw_presets, dict):
+        for name, raw in raw_presets.items():
+            if isinstance(name, str) and name.strip():
+                try:
+                    presets[name] = _parse_theme_dict(name, raw)
+                except Exception as e:
+                    log_sanitized_error(logger, f"Invalid built-in theme '{name}'", e)
+    if DEFAULT_SCHEMATIC_THEME.name not in presets:
+        presets[DEFAULT_SCHEMATIC_THEME.name] = DEFAULT_SCHEMATIC_THEME
+    return presets
+
+
+def parse_theme_yaml(content: str) -> Any:
+    """Parse and validate a standalone .yaml schematic theme string."""
+    if not isinstance(content, str):
+        raise ValueError("Theme content must be a string.")
+    if len(content.encode("utf-8")) > MAX_FILE_SIZE:
+        raise ValueError("Theme content exceeds maximum 1MB size.")
+    try:
+        data = yaml.load(content, Loader=NoAliasSafeLoader)  # nosec B506
+    except yaml.YAMLError as e:
+        raise ValueError(f"Malformed theme YAML: {e}") from None
+    if not isinstance(data, dict):
+        raise ValueError("Theme YAML root must be a mapping.")
+    name = str(data.get("name", "Custom Theme")).strip() or "Custom Theme"
+    return _parse_theme_dict(name, data)
+
+
+def serialize_theme_yaml(theme: Any) -> str:
+    """Serialize a SchematicTheme to a standalone YAML string."""
+    payload = {
+        "schema_version": 1,
+        "name": theme.name,
+        "orientation": theme.orientation,
+        "domain_spacing": float(theme.domain_spacing),
+        "chain_spacing": float(theme.chain_spacing),
+        "styles": {
+            dtype: {
+                "fill_color": st.fill_color,
+                "border_color": st.border_color,
+                "border_width": float(st.border_width),
+                "text_color": st.text_color,
+                "width": float(st.width),
+                "height": float(st.height),
+                "shape": st.shape,
+            }
+            for dtype, st in theme.styles.items()
+        },
+    }
+    return yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
+
+
+def load_theme_file(path: str) -> Any:
+    """Load and validate a standalone .yaml/.yml theme file within 1MB bounds."""
+    if not isinstance(path, str) or not path.strip():
+        raise ValueError("Theme file path cannot be empty.")
+    resolved = os.path.abspath(path)
+    base_name = os.path.basename(resolved)
+    if not resolved.lower().endswith((".yaml", ".yml")):
+        raise ValueError("Theme file must have a .yaml or .yml extension.")
+    if not os.path.isfile(resolved):
+        raise ValueError(f"Theme file '{base_name}' does not exist.")
+    if os.path.getsize(resolved) > MAX_FILE_SIZE:
+        raise ValueError(f"Theme file '{base_name}' exceeds maximum 1MB size.")
+    with open(resolved, "r", encoding="utf-8") as f:
+        content = f.read(MAX_FILE_SIZE + 1)
+    if len(content.encode("utf-8")) > MAX_FILE_SIZE:
+        raise ValueError(f"Theme file '{base_name}' exceeds maximum 1MB size.")
+    return parse_theme_yaml(content)
+
+
+def save_theme_file(path: str, theme: Any) -> None:
+    """Save a SchematicTheme to a standalone .yaml file."""
+    if not isinstance(path, str) or not path.strip():
+        raise ValueError("Theme file path cannot be empty.")
+    resolved = os.path.abspath(path)
+    if not resolved.lower().endswith((".yaml", ".yml")):
+        resolved += ".yaml"
+    payload = serialize_theme_yaml(theme)
+    if len(payload.encode("utf-8")) > MAX_FILE_SIZE:
+        raise ValueError("Serialized theme exceeds 1MB file limit.")
+    with open(resolved, "w", encoding="utf-8") as f:
+        f.write(payload)

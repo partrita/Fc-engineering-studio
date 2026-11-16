@@ -9,8 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build & Publish Release
+  build-python:
+    name: Test & Build Python Distributions
     runs-on: ubuntu-latest
 
     steps:
@@ -22,15 +22,15 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install Python 3.14
-        run: uv python install 3.14
+      - name: Install Python 3.12
+        run: uv python install 3.12
 
       - name: Install dependencies (locked)
-        run: uv sync --locked
+        run: uv sync --locked --python 3.12
 
       - name: Verify tag matches package version
         run: |
-          uv run python - <<'EOF'
+          uv run --python 3.12 python - <<'EOF'
           import os
           import tomllib
           from pathlib import Path
@@ -52,22 +52,113 @@ jobs:
           EOF
 
       - name: Run Bandit security scan
-        run: uv run bandit -r src/
+        run: uv run --python 3.12 bandit -r src/
 
       - name: Run test suite
-        run: uv run pytest
+        run: uv run --python 3.12 pytest
 
-      - name: Build distribution artifacts
+      - name: Build wheel and sdist
         run: |
           rm -rf dist
-          uv build
+          uv build --python 3.12
+
+      - name: Upload Python distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/*
+
+  build-desktop:
+    name: Build Desktop (${{ matrix.os }})
+    needs: build-python
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            archive_suffix: linux-x86_64.tar.gz
+            add_data_sep: ":"
+          - os: macos-latest
+            archive_suffix: macos-arm64.tar.gz
+            add_data_sep: ":"
+          - os: windows-latest
+            archive_suffix: windows-x86_64.zip
+            add_data_sep: ";"
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies (locked)
+        run: uv sync --locked --python 3.12
+
+      - name: Use flet-desktop-light on Linux to minimize binary size
+        if: matrix.os == 'ubuntu-latest'
+        run: uv pip install --python .venv/bin/python flet-desktop-light
+
+      - name: Package standalone app with flet pack
+        shell: bash
+        run: |
+          uv run --python 3.12 flet pack src/fc_engineer/app.py \
+            --name fc-engineer \
+            --add-data "src/fc_engineer/data/*.yaml${{ matrix.add_data_sep }}fc_engineer/data" \
+            --exclude-module tkinter \
+            --exclude-module sqlite3 \
+            --exclude-module unittest \
+            --exclude-module pydoc \
+            --exclude-module doctest \
+            --exclude-module curses \
+            --exclude-module xmlrpc \
+            --exclude-module pytest \
+            --exclude-module bandit \
+            --exclude-module PIL.ImageTk \
+            --exclude-module PIL.ImageQt \
+            --yes
+
+      - name: Archive standalone bundle
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          ARCHIVE="release-assets/fc-engineer-${GITHUB_REF_NAME}-${{ matrix.archive_suffix }}"
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            7z a -tzip "$ARCHIVE" ./dist/*
+          else
+            tar -czf "$ARCHIVE" -C dist .
+          fi
+
+      - name: Upload desktop archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: release-assets/*
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-python, build-desktop]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+          merge-multiple: true
 
       - name: Generate SHA-256 checksums
-        run: (cd dist && sha256sum *.whl *.tar.gz > SHA256SUMS.txt)
+        run: (cd all-artifacts && sha256sum * > SHA256SUMS.txt)
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           fail_on_unmatched_files: true
-          files: dist/*
+          files: all-artifacts/*

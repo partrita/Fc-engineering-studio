@@ -7,7 +7,7 @@ name = "fc-engineering-studio"
 version = "0.0.1"
 description = "Flet-based visual antibody & Fc engineering desktop application"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
     "flet[desktop]>=0.86.0",
     "pillow>=11.0.0",
