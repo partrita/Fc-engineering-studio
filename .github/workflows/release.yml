@@ -112,7 +112,7 @@ jobs:
           from pathlib import Path
           import flet_cli
 
-          win_utils = Path(flet_cli.__file__).resolve().parent / "__pyinstaller" / "win_utils.py"
+          win_utils = Path(list(flet_cli.__path__)[0]) / "__pyinstaller" / "win_utils.py"
           src = win_utils.read_text(encoding="utf-8")
           buggy = 'open(exe_path, "ab", encoding="utf-8")'
           if buggy in src:
