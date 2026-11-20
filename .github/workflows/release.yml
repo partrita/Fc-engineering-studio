@@ -103,12 +103,15 @@ jobs:
 
       - name: Use flet-desktop-light on Linux to minimize binary size
         if: matrix.os == 'ubuntu-latest'
-        run: uv pip install --python .venv/bin/python flet-desktop-light
+        run: uv pip install flet-desktop-light
+
+      - name: Install PyInstaller
+        run: uv pip install pyinstaller
 
       - name: Package standalone app with flet pack
         shell: bash
         run: |
-          uv run --python 3.12 flet pack src/fc_engineer/app.py \
+          uv run --no-sync --python 3.12 flet pack src/fc_engineer/app.py \
             --name fc-engineer \
             --add-data "src/fc_engineer/data/*.yaml${{ matrix.add_data_sep }}fc_engineer/data" \
             --yes \
