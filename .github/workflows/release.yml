@@ -111,6 +111,8 @@ jobs:
           uv run --python 3.12 flet pack src/fc_engineer/app.py \
             --name fc-engineer \
             --add-data "src/fc_engineer/data/*.yaml${{ matrix.add_data_sep }}fc_engineer/data" \
+            --yes \
+            -- \
             --exclude-module tkinter \
             --exclude-module sqlite3 \
             --exclude-module unittest \
@@ -121,8 +123,7 @@ jobs:
             --exclude-module pytest \
             --exclude-module bandit \
             --exclude-module PIL.ImageTk \
-            --exclude-module PIL.ImageQt \
-            --yes
+            --exclude-module PIL.ImageQt
 
       - name: Archive standalone bundle
         shell: bash
