@@ -2,6 +2,8 @@
 
 인간 IgG 및 이중특이성 항체(Monospecific IgG, CrossMab, IgG-scFv, scFv-Fc, DVD-Ig, BiTE 등)의 **도메인 토폴로지**와 **EU Numbering** 기반 Fc 변이 서열을 설계·분석하는 Flet 기반 로컬 데스크톱 애플리케이션입니다.
 
+![Fc Engineering Studio Demo](./demo.png)
+
 ## Architecture & Subdirectory Index
 
 ```mermaid
@@ -33,7 +35,7 @@ flowchart TD
 * **CLI Script & Module Entry Points:**
   * [`pyproject.toml:fc-engineer`](./pyproject.toml) -> [`src/fc_engineer/app.py:main`](./src/fc_engineer/app.py) (`ft.run(...)`)
   * [`src/fc_engineer/__main__.py`](./src/fc_engineer/__main__.py) (`if __name__ == "__main__": main()`)
-  * [`src/fc_engineer/__init__.py:__version__`](./src/fc_engineer/__init__.py) (`"0.0.1"`)
+  * [`src/fc_engineer/__init__.py:__version__`](./src/fc_engineer/__init__.py) (`"0.1.0"`)
 * **Flet Desktop GUI & Controller ([`src/fc_engineer/app.py`](./src/fc_engineer/app.py)):**
   * [`src/fc_engineer/app.py:AntibodyStudioController`](./src/fc_engineer/app.py), [`src/fc_engineer/app.py:build_studio_ui`](./src/fc_engineer/app.py), [`src/fc_engineer/app.py:main`](./src/fc_engineer/app.py)
 * **Domain Assembly & Scene Model ([`src/fc_engineer/designer.py`](./src/fc_engineer/designer.py)):**
@@ -102,6 +104,7 @@ uv run pytest
 1. **`Studio` 탭 (2D 캔버스 · 체인 스트립 · 통합 사이드패널)**: 수직(`N -> C`) 항체 모식도, `-S-S-` 시스테인 이황화 결합 표시, 체인 스트립 드래그/빠른 추가(`+`)와 함께 우측 사이드패널(`Inspector` | `Pairings` 하위 탭)에서 선택 도메인의 Isotype(`igg1`–`igg4`)/Allotype, `CL` 서브타입, `VH`/`VL`/`G4S` 서열, 활성 Fc 변이 요약 + `Edit Fc Mutations...` 모달(또는 캔버스 도메인 더블클릭), 실시간 서열 diff·PTM 점검 및 페어링(`VH_VL`, `CH1_CL`, `HINGE_DISULFIDE`, `CH3_DIMER`, `DISULFIDE_BOND`)을 편집합니다.
 2. **`Project` 탭 (2단 카드 그리드 · 파일 작업 · 다중특이성 빌더)**: 좌측 컬럼의 `Project Setup`(프로젝트 이름, 10종 포맷 템플릿, `Add Chain`, `Clone Selected Chain`)·`Multispecific & Heterodimer Builder`(`Heterodimer Fc Wizard`, `CrossMab CH1 <-> CL Swap`) 카드와 우측 컬럼의 직접 실행 버튼 카드(`Project Files (.ab)`, `Sequence & Schematic Export`)를 제공합니다.
 3. **`Style` 탭**: `Light / Dark Mode` 전환(기본 Light), 5종 모식도 테마 프리셋(`Claude Code`, `Classic Blueprint`, `Monochrome Publication`, `High Contrast`, `Pastel Candy`), 도메인별 색상·테두리·크기·5종 도형 커스터마이징 및 2D 모식도 전용 `.yaml` 테마 파일 저장/불러오기(`Schematic Theme Files (.yaml)`)를 지원합니다.
+4. **`Fc Engineer` 탭 (전용 Fc 엔지니어링 워크벤치)**: 체인 전체 Isotype(`IgG1`–`IgG4`)/Allotype 원클릭 전환, 목적별 Quick Recipe(예: `Silent IgG1 (PGLALA)`, `Silent + Long t½ (LALA+LS)`, `High ADCC (DE)`, `High CDC (KWES)`, `Stabilized IgG4 (S228P)`), 생물학적 효과 배지(ADCC/CDC/FcRn/Heterodimer)가 포함된 프리셋 카탈로그, 클릭 한 번으로 점돌연변이/WT 복원이 가능한 **인터랙티브 EU Numbering 잔기 브라우저**, 그리고 실시간 Fc 기능 프로파일·WT 대비 MW/pI·PTM 변화량을 제공합니다.
 
 ## 프로젝트 구조
 
@@ -119,6 +122,8 @@ src/
     ├── __init__.py          # 패키지 메타데이터
     ├── __main__.py          # python -m fc_engineer 진입점
     ├── app.py               # AntibodyStudioController 및 Flet 데스크톱 UI
+    ├── fc_catalog.py        # Fc 변이 생물학적 메타데이터, 기능 핫스팟, 프로파일·EU 잔기 분석
+    ├── fc_workbench.py      # 전용 Fc Engineer 탭 UI (레시피, 인터랙티브 EU 브라우저, 점돌연변이 피커)
     ├── designer.py          # 도메인/체인 모델, 포맷 템플릿, 교차 도메인 라우팅, 2D 씬 빌더
     ├── core.py              # EU Numbering 계산, 도메인 슬라이싱, 변이·diff·developability 로직
     ├── config.py            # YAML 데이터 로딩 및 보안 검증 (NoAliasSafeLoader, 1 MiB 제한)

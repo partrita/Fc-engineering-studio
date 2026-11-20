@@ -603,7 +603,7 @@ def test_package_version_alignment():
     with pyproject_path.open("rb") as f:
         project_version = tomllib.load(f)["project"]["version"]
 
-    assert project_version == "0.0.1"
+    assert project_version == "0.1.0"
     assert fc_engineer.__version__ == project_version
 
 

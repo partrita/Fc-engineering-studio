@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fc-engineering-studio"
-version = "0.0.1"
+version = "0.1.0"
 description = "Flet-based visual antibody & Fc engineering desktop application"
 readme = "README.md"
 requires-python = ">=3.12"

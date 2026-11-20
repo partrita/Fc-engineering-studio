@@ -22,8 +22,20 @@ from fc_engineer.core import (
     CONSTANT_DOMAIN_EU_RANGES,
     compute_protein_metrics,
     generate_batch,
+    get_domain_residue_index,
     lookup_wt_residue,
+    parse_mutation,
 )
+from fc_engineer.fc_catalog import (
+    AMINO_ACIDS,
+    FC_CATEGORIES,
+    FC_RECIPES,
+    build_eu_residue_rows,
+    get_hotspot_info,
+    get_preset_metadata,
+    summarize_fc_profile,
+)
+from fc_engineer.fc_workbench import build_fc_engineer_tab
 from fc_engineer.designer import (
     ALLOWED_TEMPLATE_KEYS_BY_TYPE,
     DEFAULT_SCHEMATIC_THEME,
@@ -533,6 +545,202 @@ class AntibodyStudioController:
     def register_file_custom_mutation(self, label: str, mutants_str: str) -> List[str]:
         """Register a project-scoped custom mutation definition."""
         return add_file_custom_mutation(self.project, label, mutants_str)
+
+    def set_chain_isotype(
+        self,
+        chain_id: str,
+        isotype: str,
+        allotype: Optional[str] = None,
+        apply_to_all_heavy: Optional[bool] = None,
+        clear_incompatible_mutations: bool = False,
+    ) -> List[str]:
+        """Atomically update isotype/allotype across all constant domains of target chain(s)."""
+        if isotype not in config.SEQUENCES:
+            return [f"Unknown isotype '{isotype}'."]
+        allo_map = config.SEQUENCES[isotype]
+        target_allo = allotype if (allotype is not None and allotype in allo_map) else ""
+        if allotype is not None and allotype != "" and allotype not in allo_map:
+            return [f"Unknown allotype '{allotype}' for {isotype.upper()}."]
+
+        targets = self._resolve_mutation_target_chains(chain_id, apply_to_all_heavy)
+        const_found = any(
+            d.domain_type in CONSTANT_DOMAIN_EU_RANGES
+            for c in targets
+            for d in c.domains
+        )
+        if not const_found:
+            return ["Selected chain has no constant domains (CH1/Hinge/CH2/CH3)."]
+
+        preset_map = self.get_preset_map()
+        pre_project = copy.deepcopy(self.project)
+
+        for c in targets:
+            for d in c.domains:
+                if d.domain_type not in CONSTANT_DOMAIN_EU_RANGES:
+                    continue
+                if d.isotype != isotype:
+                    d.isotype = isotype
+                    d.allotype = target_allo
+                elif allotype is not None:
+                    d.allotype = target_allo
+
+                _, errs = resolve_domain_sequence(d, preset_map)
+                if errs and clear_incompatible_mutations:
+                    d.applied_presets.clear()
+                    d.custom_mutations.clear()
+                    _, errs = resolve_domain_sequence(d, preset_map)
+                if errs:
+                    self.project = pre_project
+                    return errs
+
+        self._push_undo(pre_project)
+        return []
+
+    def apply_fc_recipe(
+        self,
+        chain_id: str,
+        presets: List[str],
+        isotype: Optional[str] = None,
+        reset_first: bool = True,
+        apply_to_all_heavy: Optional[bool] = None,
+    ) -> List[str]:
+        """Atomically apply a goal-oriented Fc recipe (optional isotype + presets) to target chain(s)."""
+        targets = self._resolve_mutation_target_chains(chain_id, apply_to_all_heavy)
+        if not any(
+            d.domain_type in ("Hinge", "CH2", "CH3")
+            for c in targets
+            for d in c.domains
+        ):
+            return ["No Fc domains (Hinge/CH2/CH3) found on target chain(s)."]
+
+        preset_map = self.get_preset_map()
+        for p_lbl in presets:
+            if p_lbl not in preset_map:
+                return [f"Unknown mutation preset '{p_lbl}'."]
+
+        pre_project = copy.deepcopy(self.project)
+        try:
+            for c in targets:
+                if reset_first:
+                    reset_chain_mutations(c)
+                if isotype is not None:
+                    if isotype not in config.SEQUENCES:
+                        self.project = pre_project
+                        return [f"Unknown isotype '{isotype}'."]
+                    for d in c.domains:
+                        if d.domain_type in CONSTANT_DOMAIN_EU_RANGES and d.isotype != isotype:
+                            d.isotype = isotype
+                            d.allotype = ""
+                for p_lbl in presets:
+                    errs = route_mutations_to_chain(
+                        c, preset_map[p_lbl], preset_label=p_lbl, preset_map=preset_map
+                    )
+                    if errs:
+                        self.project = pre_project
+                        return errs
+        except Exception as err:
+            self.project = pre_project
+            return [str(err)]
+
+        self._push_undo(pre_project)
+        return []
+
+    def mutate_residue_at_eu(
+        self,
+        chain_id: str,
+        domain_id: str,
+        eu_pos: int,
+        new_aa: str,
+        apply_to_all_heavy: Optional[bool] = None,
+    ) -> List[str]:
+        """Set or revert a single EU point mutation on a constant domain (or across all heavy chains)."""
+        new_aa = (new_aa or "").strip().upper()
+        if len(new_aa) != 1 or new_aa not in AMINO_ACIDS:
+            return [f"Invalid amino acid '{new_aa}'."]
+
+        _, dom, _ = self._get_domain(chain_id, domain_id)
+        if dom.domain_type not in CONSTANT_DOMAIN_EU_RANGES:
+            return [f"Domain '{dom.domain_type}' does not use EU numbering."]
+
+        targets = self._resolve_mutation_target_chains(chain_id, apply_to_all_heavy)
+        preset_map = self.get_preset_map()
+        pre_project = copy.deepcopy(self.project)
+
+        for c in targets:
+            target_dom = next(
+                (d for d in c.domains if d.id == domain_id),
+                next((d for d in c.domains if d.domain_type == dom.domain_type), None),
+            )
+            if target_dom is None:
+                continue
+
+            iso_seqs = config.SEQUENCES.get(target_dom.isotype, {})
+            full_seq = iso_seqs.get(target_dom.allotype) or (
+                next(iter(iso_seqs.values())) if iso_seqs else ""
+            )
+            wt_aa = lookup_wt_residue(full_seq, eu_pos, target_dom.isotype) if full_seq else None
+            if wt_aa is None:
+                self.project = pre_project
+                return [f"EU {eu_pos} is not present in {target_dom.isotype.upper()} {target_dom.domain_type}."]
+
+            # Remove any existing custom mutation at this EU position
+            kept_customs: List[str] = []
+            for tok in target_dom.custom_mutations:
+                try:
+                    _, p, _ = parse_mutation(tok)
+                    if p == eu_pos:
+                        continue
+                except ValueError:
+                    pass
+                kept_customs.append(tok)
+            target_dom.custom_mutations = kept_customs
+
+            # Also check if any active preset touches this EU position; preserve sibling mutations when unbundling
+            conflicting_presets: List[str] = []
+            sibling_tokens: List[str] = []
+            for plbl in list(target_dom.applied_presets):
+                pval = preset_map.get(plbl, "")
+                parts = [p.strip() for p in pval.replace(",", "/").split("/") if p.strip()]
+                touches = False
+                for part in parts:
+                    try:
+                        _, p, _ = parse_mutation(part)
+                        if p == eu_pos:
+                            touches = True
+                            break
+                    except ValueError:
+                        continue
+                if touches:
+                    conflicting_presets.append(plbl)
+                    for part in parts:
+                        try:
+                            _, p, _ = parse_mutation(part)
+                            if p != eu_pos:
+                                sibling_tokens.append(part)
+                        except ValueError:
+                            continue
+
+            for plbl in conflicting_presets:
+                remove_preset_from_chain(c, plbl)
+            if sibling_tokens:
+                errs = route_mutations_to_chain(
+                    c, "/".join(sibling_tokens), preset_label="", preset_map=preset_map
+                )
+                if errs:
+                    self.project = pre_project
+                    return errs
+
+            if new_aa != wt_aa:
+                tok = f"{wt_aa}{eu_pos}{new_aa}"
+                errs = route_mutations_to_chain(
+                    c, tok, preset_label="", preset_map=preset_map
+                )
+                if errs:
+                    self.project = pre_project
+                    return errs
+
+        self._push_undo(pre_project)
+        return []
 
     def add_pairing(
         self,
@@ -1389,9 +1597,13 @@ def build_studio_ui(
                     refresh_modal_presets()
                     render_workspace()
 
+                meta_tip = get_preset_metadata(
+                    lbl, val, is_project_custom=(lbl in file_preset_labels)
+                ).summary
                 cb = ft.Checkbox(
                     label=f"{lbl} ({val})",
                     value=(lbl in active_presets),
+                    tooltip=meta_tip,
                     expand=True,
                     on_change=_on_cb,
                 )
@@ -2334,8 +2546,11 @@ def build_studio_ui(
                     )
                 )
             dom_actions.append(
-                ft.OutlinedButton(
-                    "Delete",
+                ft.IconButton(
+                    icon=ft.Icons.DELETE_OUTLINE,
+                    icon_size=16,
+                    icon_color="#DC2626",
+                    tooltip="Delete Domain",
                     on_click=lambda e, cid=chain.id, did=dom.id, dt=dom.domain_type: (
                         ctrl.remove_domain(cid, did),
                         render_workspace(),
@@ -2352,11 +2567,13 @@ def build_studio_ui(
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     controls=[
                         ft.Text(
-                            f"Selected Domain: {dom.domain_type} ({dom.id})",
+                            f"{dom.domain_type} ({dom.id})",
                             size=12,
                             weight=ft.FontWeight.W_600,
+                            expand=True,
+                            overflow=ft.TextOverflow.ELLIPSIS,
                         ),
-                        ft.Row(spacing=4, controls=dom_actions),
+                        ft.Row(spacing=0, tight=True, controls=dom_actions),
                     ],
                 )
             )
@@ -2431,11 +2648,6 @@ def build_studio_ui(
                 )
             elif dom.domain_type in ("VH", "VL", "G4S"):
                 tkeys = ALLOWED_TEMPLATE_KEYS_BY_TYPE[dom.domain_type]
-                seq_len_txt = ft.Text(
-                    f"{len(dom.custom_sequence)} / {MAX_CUSTOM_SEQ_LENGTH}",
-                    size=10,
-                    color=active_pal["muted"],
-                )
                 seq_tf = ft.TextField(
                     label=f"Custom {dom.domain_type} Sequence",
                     value=dom.custom_sequence,
@@ -2444,10 +2656,6 @@ def build_studio_ui(
                     max_lines=3,
                     max_length=MAX_CUSTOM_SEQ_LENGTH,
                     dense=True,
-                    on_change=lambda e: (
-                        setattr(seq_len_txt, "value", f"{len(e.control.value or '')} / {MAX_CUSTOM_SEQ_LENGTH}"),
-                        page.update(),
-                    ),
                 )
 
                 def on_tkey_select(e: ft.ControlEvent) -> None:
@@ -2495,15 +2703,17 @@ def build_studio_ui(
                         ),
                         seq_tf,
                         ft.Row(
-                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            spacing=6,
                             controls=[
-                                seq_len_txt,
-                                ft.Row(
-                                    spacing=6,
-                                    controls=[
-                                        ft.OutlinedButton("Reset to Template", on_click=on_reset_cseq),
-                                        ft.Button("Apply Sequence", on_click=on_apply_cseq),
-                                    ],
+                                ft.OutlinedButton(
+                                    "Reset Template",
+                                    expand=True,
+                                    on_click=on_reset_cseq,
+                                ),
+                                ft.Button(
+                                    "Apply Sequence",
+                                    expand=True,
+                                    on_click=on_apply_cseq,
                                 ),
                             ],
                         ),
@@ -2554,11 +2764,17 @@ def build_studio_ui(
                 ),
                 ft.Row(
                     spacing=6,
+                    wrap=True,
                     controls=[
                         ft.Button(
                             "Edit Fc Mutations...",
                             icon=ft.Icons.TUNE,
                             on_click=lambda e, cid=chain.id: open_fc_mutations_modal(cid),
+                        ),
+                        ft.OutlinedButton(
+                            "Fc Workbench",
+                            icon=ft.Icons.BIOTECH,
+                            on_click=lambda e: _open_fc_engineer_tab(),
                         ),
                         ft.OutlinedButton(
                             "Reset WT",
@@ -2831,6 +3047,13 @@ def build_studio_ui(
             ft.Text("No recent projects yet.", size=11, color=pal["muted"])
         ]
 
+    fc_wb_hooks: Dict[str, Any] = {"rebuild": None, "apply_theme": None, "switch_tab": None}
+
+    def _open_fc_engineer_tab() -> None:
+        fn = fc_wb_hooks.get("switch_tab")
+        if callable(fn):
+            fn()
+
     def render_workspace() -> None:
         project_name_tf.value = ctrl.project.name
         format_dd.value = ctrl.project.format_type
@@ -2857,6 +3080,8 @@ def build_studio_ui(
         rebuild_pairings()
         rebuild_multispecific_tools()
         rebuild_inspector()
+        if callable(fc_wb_hooks.get("rebuild")):
+            fc_wb_hooks["rebuild"]()
         if ctrl.is_dirty and ctrl.auto_recovery:
             try:
                 ctrl.save_recovery_snapshot()
@@ -3489,6 +3714,7 @@ def build_studio_ui(
             ("Add Chain", lambda: (ctrl.add_chain(), render_workspace())),
             ("Reset 2D Layout", lambda: (ctrl.reset_layout(), render_workspace())),
             ("Auto-Detect Pairings", lambda: (ctrl.auto_detect_pairings(), render_workspace())),
+            ("Open Fc Engineer Workbench", lambda: _open_fc_engineer_tab()),
             ("Edit Fc Mutations...", lambda: open_fc_mutations_modal(ctrl.selected_chain_id) if ctrl.selected_chain_id else None),
             ("Batch Variant Generator...", lambda: open_batch_variants_modal()),
             ("Keyboard Shortcuts & Help", lambda: open_help_modal()),
@@ -3567,12 +3793,23 @@ def build_studio_ui(
                 on_click=lambda e: _set_zoom(ctrl.zoom_scale + 0.15),
             ),
             ft.OutlinedButton(
+                "Fit",
+                tooltip="Fit full antibody schematic into canvas",
+                on_click=lambda e: _set_zoom(0.75 if ctrl.theme.orientation == "vertical" else 0.9),
+            ),
+            ft.OutlinedButton(
                 f"Grid: {'ON' if ctrl.snap_to_grid else 'OFF'}",
                 on_click=_on_toggle_snap,
             ),
             ft.OutlinedButton(
                 "Orient: H" if ctrl.theme.orientation == "horizontal" else "Orient: V",
                 on_click=_on_toggle_orient,
+            ),
+            ft.OutlinedButton(
+                "Fc Engineer",
+                icon=ft.Icons.BIOTECH,
+                tooltip="Open dedicated Fc Engineering Workbench",
+                on_click=lambda e: _open_fc_engineer_tab(),
             ),
             ft.OutlinedButton("Batch...", on_click=open_batch_variants_modal),
             ft.IconButton(
@@ -3656,7 +3893,7 @@ def build_studio_ui(
     )
 
     studio_side_panel = ft.Container(
-        width=360,
+        width=380,
         padding=10,
         bgcolor=pal["panel"],
         border=ft.Border.all(1, pal["border"]),
@@ -3914,6 +4151,8 @@ def build_studio_ui(
             card.border = ft.Border.all(1, new_pal["border"])
         settings_panel.bgcolor = new_pal["panel"]
         settings_panel.border = ft.Border.all(1, new_pal["border"])
+        if callable(fc_wb_hooks.get("apply_theme")):
+            fc_wb_hooks["apply_theme"](new_mode)
         status_bar_row.bgcolor = new_pal["elevated"]
         status_bar_row.border = ft.Border.all(1, new_pal["border"])
         status_bar_txt.color = new_pal["muted"]
@@ -3988,9 +4227,23 @@ def build_studio_ui(
         ),
     )
 
+    async def _run_clipboard_countdown() -> None:
+        await _clipboard_countdown_loop()
+
+    fc_engineer_panel, _rebuild_fc_wb, _apply_fc_theme = build_fc_engineer_tab(
+        page=page,
+        ctrl=ctrl,
+        palette_fn=_ui_palette,
+        notify=notify,
+        render_workspace=render_workspace,
+        clipboard_countdown_coro=_run_clipboard_countdown,
+    )
+    fc_wb_hooks["rebuild"] = _rebuild_fc_wb
+    fc_wb_hooks["apply_theme"] = _apply_fc_theme
+
     main_tabs = ft.Tabs(
         selected_index=0,
-        length=3,
+        length=4,
         expand=True,
         content=ft.Column(
             expand=True,
@@ -4000,6 +4253,7 @@ def build_studio_ui(
                         ft.Tab(label="Studio", icon=ft.Icons.SCHEMA),
                         ft.Tab(label="Project", icon=ft.Icons.ACCOUNT_TREE),
                         ft.Tab(label="Style", icon=ft.Icons.PALETTE),
+                        ft.Tab(label="Fc Engineer", icon=ft.Icons.BIOTECH),
                     ]
                 ),
                 ft.TabBarView(
@@ -4008,11 +4262,18 @@ def build_studio_ui(
                         studio_panel,
                         project_panel,
                         settings_panel,
+                        fc_engineer_panel,
                     ],
                 ),
             ],
         ),
     )
+
+    def _switch_to_fc_tab() -> None:
+        main_tabs.selected_index = 3
+        render_workspace()
+
+    fc_wb_hooks["switch_tab"] = _switch_to_fc_tab
 
     def _on_clear_clip_now(ev: Any) -> None:
         ctrl.clear_clipboard()
