@@ -101,8 +101,24 @@ jobs:
       - name: Install dependencies (locked)
         run: uv sync --locked --python 3.12
 
-      - name: Install PyInstaller
-        run: uv pip install pyinstaller
+      - name: Install PyInstaller and flet-cli
+        run: uv pip install pyinstaller flet-cli==1.1.2
+
+      - name: Patch flet-cli 1.1.2 Windows binary-mode open bug
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          uv run --no-sync --python 3.12 python - <<'EOF'
+          from pathlib import Path
+          import flet_cli
+
+          win_utils = Path(flet_cli.__file__).resolve().parent / "__pyinstaller" / "win_utils.py"
+          src = win_utils.read_text(encoding="utf-8")
+          buggy = 'open(exe_path, "ab", encoding="utf-8")'
+          if buggy in src:
+              win_utils.write_text(src.replace(buggy, 'open(exe_path, "ab")'), encoding="utf-8")
+              print(f"Patched upstream binary-mode open bug in {win_utils}")
+          EOF
 
       - name: Package standalone app with flet pack
         shell: bash
